@@ -1,0 +1,39 @@
+body {
+  font-family: Arial, sans-serif;
+  width: 320px;
+  margin: 0;
+  padding: 16px;
+  background: #f8f9fa;
+}
+
+.container {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+h1 {
+  font-size: 18px;
+  margin: 0;
+}
+
+#status {
+  font-size: 14px;
+  color: #444;
+}
+
+.result-card {
+  background: white;
+  padding: 10px;
+  border-radius: 8px;
+  border: 1px solid #ddd;
+  margin-top: 8px;
+}
+
+.error {
+  color: red;
+}
+
+.empty {
+  color: #666;
+}
