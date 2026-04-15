@@ -69,15 +69,34 @@ function renderResults(data) {
 
   results.innerHTML = html;
 
-  document.querySelectorAll(".visit-btn").forEach((button) => {
-    button.addEventListener("click", () => {
-      const url = button.dataset.url;
+  document.querySelectorAll(".visit-btn").forEach((button, index) => {
+  button.addEventListener("click", () => {
+    const match = matches[index];
+    const searchUrl = buildStoreSearchUrl(match.store, match.title);
 
-      if (url) {
-        chrome.tabs.create({ url });
-      }
-    });
+    if (searchUrl) {
+      chrome.tabs.create({ url: searchUrl });
+    }
   });
+});
+}
+
+function buildStoreSearchUrl(store, title) {
+  const query = encodeURIComponent(title);
+
+  if (store.includes("gigantti")) {
+    return `https://www.gigantti.fi/search?q=${query}`;
+  }
+
+  if (store.includes("verkkokauppa")) {
+    return `https://www.verkkokauppa.com/fi/search?query=${query}`;
+  }
+
+  if (store.includes("jimms")) {
+    return `https://www.jimms.fi/fi/Product/Search?q=${query}`;
+  }
+
+  return `https://${store}/search?q=${query}`;
 }
 
 function showError(message) {
