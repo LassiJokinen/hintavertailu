@@ -1,5 +1,7 @@
 const express = require("express");
 const cors = require("cors");
+const { findMatches } = require("./matcher");
+const offers = require("../data/offers.json");
 
 const app = express();
 const PORT = 3000;
@@ -15,44 +17,32 @@ app.post("/compare", (req, res) => {
   const {
     title = "",
     price = null,
-    currency = "EUR",
+    currency = "",
     store = "",
+    brand = "",
+    model = "",
+    sku = "",
+    ean = "",
+    mpn = "",
   } = req.body || {};
 
-  const response = {
-    queryProduct: {
-      title,
-      store,
-      price,
-      currency,
-    },
-    matches: [
-      {
-        store: "shop-a.com",
-        title: title || "Sample product match",
-        price: 279.99,
-        shipping: 0,
-        total: 279.99,
-        currency,
-        url: "https://shop-a.com/sample-product",
-        matchScore: 100,
-        matchReason: "Dummy exact match",
-      },
-      {
-        store: "shop-b.com",
-        title: title || "Sample product match",
-        price: 284.99,
-        shipping: 4.99,
-        total: 289.98,
-        currency,
-        url: "https://shop-b.com/sample-product",
-        matchScore: 90,
-        matchReason: "Dummy brand + model match",
-      },
-    ].filter((match) => match.store !== store),
-  };
+  const query = { title, price, currency, store, brand, model, sku, ean, mpn };
+  const matches = findMatches(query, offers);
 
-  res.json(response);
+  res.json({
+    queryProduct: { title, store, price, currency },
+    matches: matches.map((match) => ({
+      store: match.store,
+      title: match.title,
+      price: match.price,
+      shipping: match.shipping,
+      total: match.total,
+      currency: match.currency,
+      url: match.url,
+      matchScore: match.matchScore,
+      matchReason: match.matchReason,
+    })),
+  });
 });
 
 app.listen(PORT, () => {

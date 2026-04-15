@@ -1,0 +1,93 @@
+[
+  {
+    "store": "gigantti.fi",
+    "title": "Sony WH-1000XM5 Wireless Headphones Black",
+    "price": 299.99,
+    "shipping": 0,
+    "currency": "EUR",
+    "url": "https://gigantti.fi/sony-wh-1000xm5",
+    "brand": "Sony",
+    "model": "WH-1000XM5",
+    "sku": "WH1000XM5B",
+    "ean": "4548736132566",
+    "mpn": "WH1000XM5B"
+  },
+  {
+    "store": "verkkokauppa.com",
+    "title": "Sony WH1000XM5 langattomat kuulokkeet",
+    "price": 279.99,
+    "shipping": 4.99,
+    "currency": "EUR",
+    "url": "https://verkkokauppa.com/sony-wh1000xm5",
+    "brand": "Sony",
+    "model": "WH1000XM5",
+    "sku": "WH1000XM5B",
+    "ean": "4548736132566",
+    "mpn": "WH-1000XM5B"
+  },
+  {
+    "store": "power.fi",
+    "title": "Sony WH-1000XM5 Bluetooth Headphones",
+    "price": 289.99,
+    "shipping": 0,
+    "currency": "EUR",
+    "url": "https://power.fi/sony-wh-1000xm5",
+    "brand": "Sony",
+    "model": "WH-1000XM5",
+    "sku": "WH1000XM5B",
+    "ean": "4548736132566",
+    "mpn": "WH1000XM5B"
+  },
+  {
+    "store": "gigantti.fi",
+    "title": "Apple AirPods Pro 2",
+    "price": 249.99,
+    "shipping": 0,
+    "currency": "EUR",
+    "url": "https://gigantti.fi/airpods-pro-2",
+    "brand": "Apple",
+    "model": "AirPodsPro2",
+    "sku": "MQD83ZM/A",
+    "ean": "194253397472",
+    "mpn": "MQD83ZM/A"
+  },
+  {
+    "store": "verkkokauppa.com",
+    "title": "Apple AirPods Pro (2nd generation)",
+    "price": 239.99,
+    "shipping": 3.99,
+    "currency": "EUR",
+    "url": "https://verkkokauppa.com/apple-airpods-pro-2",
+    "brand": "Apple",
+    "model": "AirPods Pro 2",
+    "sku": "MQD83ZM/A",
+    "ean": "194253397472",
+    "mpn": "MQD83ZM/A"
+  },
+  {
+    "store": "power.fi",
+    "title": "JBL Charge 5 Bluetooth Speaker",
+    "price": 149.99,
+    "shipping": 0,
+    "currency": "EUR",
+    "url": "https://power.fi/jbl-charge-5",
+    "brand": "JBL",
+    "model": "Charge5",
+    "sku": "JBLCHARGE5BLK",
+    "ean": "6925281982088",
+    "mpn": "JBLCHARGE5BLK"
+  },
+  {
+    "store": "gigantti.fi",
+    "title": "JBL Charge 5 Portable Speaker Black",
+    "price": 144.99,
+    "shipping": 4.99,
+    "currency": "EUR",
+    "url": "https://gigantti.fi/jbl-charge5",
+    "brand": "JBL",
+    "model": "Charge 5",
+    "sku": "JBLCHARGE5BLK",
+    "ean": "6925281982088",
+    "mpn": "JBL-CHARGE5-BLK"
+  }
+]
