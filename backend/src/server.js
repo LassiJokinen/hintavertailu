@@ -1,33 +1,60 @@
-const express = require('express');
-const cors = require('cors');
+const express = require("express");
+const cors = require("cors");
 
 const app = express();
 const PORT = 3000;
 
-// Middleware
 app.use(cors());
 app.use(express.json());
 
-// POST /compare endpoint
-app.post('/compare', (req, res) => {
-  const { title, price, currency, url, store, brand, model, sku } = req.body;
+app.get("/", (req, res) => {
+  res.json({ ok: true, message: "Price compare backend is running" });
+});
 
-  // Hardcoded response matching the API contract
+app.post("/compare", (req, res) => {
+  const {
+    title = "",
+    price = null,
+    currency = "EUR",
+    store = "",
+  } = req.body || {};
+
   const response = {
+    queryProduct: {
+      title,
+      store,
+      price,
+      currency,
+    },
     matches: [
       {
-        store: "Example Store",
-        price: 19.99,
-        currency: "USD",
-        url: "https://example.com/product"
-      }
-    ]
+        store: "shop-a.com",
+        title: title || "Sample product match",
+        price: 279.99,
+        shipping: 0,
+        total: 279.99,
+        currency,
+        url: "https://shop-a.com/sample-product",
+        matchScore: 100,
+        matchReason: "Dummy exact match",
+      },
+      {
+        store: "shop-b.com",
+        title: title || "Sample product match",
+        price: 284.99,
+        shipping: 4.99,
+        total: 289.98,
+        currency,
+        url: "https://shop-b.com/sample-product",
+        matchScore: 90,
+        matchReason: "Dummy brand + model match",
+      },
+    ].filter((match) => match.store !== store),
   };
 
   res.json(response);
 });
 
-// Start server
 app.listen(PORT, () => {
   console.log(`Server running on http://localhost:${PORT}`);
 });
