@@ -41,17 +41,43 @@ function renderResults(data) {
 
   status.textContent = `Found ${matches.length} matching offers`;
 
-  results.innerHTML = matches
-    .map(
-      (match) => `
-        <div class="result-card">
-          <strong>${match.store}</strong><br>
-          ${match.title}<br>
-          <strong>${match.price} ${match.currency}</strong>
+  let html = "";
+
+  matches.forEach((match) => {
+    const logoUrl = `https://www.google.com/s2/favicons?domain=${match.store}&sz=64`;
+
+    html += `
+      <div class="result-card">
+        <div class="result-left">
+          <img class="store-logo" src="${logoUrl}" alt="${match.store}">
         </div>
-      `
-    )
-    .join("");
+
+        <div class="result-center">
+          <div class="product-title">${match.title}</div>
+          <div class="store-name">${match.store}</div>
+          <div class="price">${match.price} ${match.currency}</div>
+        </div>
+
+        <div class="result-right">
+          <button class="visit-btn" data-url="${match.url}">
+            ↗
+          </button>
+        </div>
+      </div>
+    `;
+  });
+
+  results.innerHTML = html;
+
+  document.querySelectorAll(".visit-btn").forEach((button) => {
+    button.addEventListener("click", () => {
+      const url = button.dataset.url;
+
+      if (url) {
+        chrome.tabs.create({ url });
+      }
+    });
+  });
 }
 
 function showError(message) {

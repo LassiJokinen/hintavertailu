@@ -37,3 +37,61 @@ h1 {
 .empty {
   color: #666;
 }
+
+.result-card {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  background: white;
+  padding: 10px;
+  border-radius: 8px;
+  border: 1px solid #ddd;
+  margin-top: 8px;
+}
+
+.result-left {
+  flex-shrink: 0;
+}
+
+.store-logo {
+  width: 28px;
+  height: 28px;
+  border-radius: 6px;
+}
+
+.result-center {
+  flex: 1;
+}
+
+.product-title {
+  font-size: 14px;
+  font-weight: bold;
+}
+
+.store-name {
+  font-size: 12px;
+  color: #666;
+}
+
+.price {
+  font-size: 13px;
+  margin-top: 4px;
+}
+
+.result-right {
+  flex-shrink: 0;
+}
+
+.visit-btn {
+  width: 34px;
+  height: 34px;
+  border: 1px solid #ccc;
+  border-radius: 8px;
+  background: white;
+  cursor: pointer;
+  font-size: 16px;
+}
+
+.visit-btn:hover {
+  background: #f3f3f3;
+}
