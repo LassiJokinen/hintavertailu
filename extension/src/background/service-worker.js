@@ -18,7 +18,7 @@ async function compareCurrentTab(sendResponse) {
       throw new Error("No active tab found");
     }
 
-    const extractionResult = await chrome.scripting.executeScript({
+    await chrome.scripting.executeScript({
       target: { tabId: tab.id },
       files: ["src/content/extractors.js"]
     });
@@ -29,6 +29,16 @@ async function compareCurrentTab(sendResponse) {
     });
 
     const extractedProduct = product[0].result;
+
+    if (!extractedProduct?.supported) {
+      sendResponse({
+        success: false,
+        error:
+          extractedProduct?.message ||
+          "This page is not a supported product page yet."
+      });
+      return;
+    }
 
     const backendResponse = await fetch(API_URL, {
       method: "POST",
