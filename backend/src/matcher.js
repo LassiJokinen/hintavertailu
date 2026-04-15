@@ -5,21 +5,41 @@ const {
   normalizeText,
 } = require("./normalizer");
 
-function getKeywordOverlapScore(queryTitle, offerTitle) {
-  const queryWords = normalizeTitle(queryTitle).split(" ").filter(Boolean);
-  const offerWords = normalizeTitle(offerTitle).split(" ").filter(Boolean);
+const STOP_WORDS = new Set([
+  "wireless",
+  "bluetooth",
+  "headphones",
+  "kuulokkeet",
+  "langattomat",
+  "portable",
+  "speaker",
+  "black",
+  "white",
+  "generation",
+  "gen",
+  "2nd",
+  "3rd",
+  "4th",
+  "2024",
+  "aktiivisella",
+  "melunvaimennuksella",
+  "latauskotelo",
+  "with",
+  "case"
+]);
 
-  if (queryWords.length === 0 || offerWords.length === 0) {
-    return 0;
-  }
+const KNOWN_BRANDS = ["apple", "sony", "jbl", "bose"];
 
-  const overlap = queryWords.filter((word) => offerWords.includes(word));
-  const overlapRatio = overlap.length / Math.max(queryWords.length, offerWords.length);
+function getMeaningfulWords(title) {
+  return normalizeTitle(title)
+    .split(" ")
+    .filter(Boolean)
+    .filter((word) => !STOP_WORDS.has(word));
+}
 
-  if (overlap.length >= 3 || overlapRatio >= 0.7) return 80;
-  if (overlap.length >= 2 || overlapRatio >= 0.5) return 70;
-  if (overlap.length >= 1) return 60;
-  return 0;
+function detectBrand(text) {
+  const normalized = normalizeTitle(text);
+  return KNOWN_BRANDS.find((brand) => normalized.includes(brand)) || "";
 }
 
 function scoreMatch(query, offer) {
@@ -32,8 +52,10 @@ function scoreMatch(query, offer) {
   const queryMpn = normalizeIdentifier(query.mpn);
   const offerMpn = normalizeIdentifier(offer.mpn);
 
-  const queryBrand = normalizeText(query.brand);
+  const explicitQueryBrand = normalizeText(query.brand);
   const offerBrand = normalizeText(offer.brand);
+  const inferredQueryBrand = detectBrand(query.title);
+  const effectiveQueryBrand = explicitQueryBrand || inferredQueryBrand;
 
   const queryModel = normalizeModel(query.model);
   const offerModel = normalizeModel(offer.model);
@@ -53,7 +75,7 @@ function scoreMatch(query, offer) {
     return { score: 100, reason: "Exact MPN match" };
   }
 
-  if (queryBrand && queryModel && queryBrand === offerBrand && queryModel === offerModel) {
+  if (effectiveQueryBrand && queryModel && effectiveQueryBrand === offerBrand && queryModel === offerModel) {
     return { score: 90, reason: "Exact brand and model match" };
   }
 
@@ -61,9 +83,12 @@ function scoreMatch(query, offer) {
     return { score: 85, reason: "Exact title match" };
   }
 
-  const keywordScore = getKeywordOverlapScore(query.title, offer.title);
-  if (keywordScore > 0) {
-    return { score: keywordScore, reason: "Keyword overlap" };
+  const queryWords = getMeaningfulWords(query.title);
+  const offerWords = getMeaningfulWords(offer.title);
+  const overlap = queryWords.filter((word) => offerWords.includes(word));
+
+  if (effectiveQueryBrand && effectiveQueryBrand === offerBrand && overlap.length >= 2) {
+    return { score: 75, reason: "Strong keyword overlap with same brand" };
   }
 
   return { score: 0, reason: "No strong match" };
@@ -84,7 +109,7 @@ function findMatches(query, offers) {
         matchReason: reason,
       };
     })
-    .filter((result) => result.matchScore >= 60)
+    .filter((result) => result.matchScore >= 75)
     .sort((a, b) => b.matchScore - a.matchScore || a.total - b.total);
 }
 
