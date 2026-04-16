@@ -11,5 +11,11 @@
   "action": {
     "default_popup": "src/popup/popup.html",
     "default_title": "PriceScout"
+  },
+  "icons": {
+    "16": "icon128.png",
+    "32": "icon128.png",
+    "48": "icon128.png",
+    "128": "icon128.png"
   }
 }
