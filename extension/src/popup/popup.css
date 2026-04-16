@@ -13,8 +13,18 @@ body {
 }
 
 h1 {
-  font-size: 18px;
+  font-size: 20px;
+  font-weight: 800;
   margin: 0;
+  letter-spacing: -0.4px;
+}
+
+.brand-main {
+  color: #111827;
+}
+
+.brand-accent {
+  color: #16a34a;
 }
 
 #status {
