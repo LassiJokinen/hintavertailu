@@ -64,9 +64,12 @@ h1 {
   display: flex;
   align-items: center;
   gap: 12px;
-  transition: transform 0.12s ease, box-shadow 0.12s ease,
-    border-color 0.12s ease;
-  border-radius: 8px;
+  width: 100%;
+}
+
+.result-center {
+  flex: 1;
+  min-width: 0;
 }
 
 .result-left {
@@ -82,11 +85,6 @@ h1 {
   width: 28px;
   height: 28px;
   border-radius: 6px;
-}
-
-.result-center {
-  flex: 1;
-  min-width: 0;
 }
 
 .product-title {
