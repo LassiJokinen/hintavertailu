@@ -7,6 +7,7 @@
     "start": "node src/server.js",
     "init-db": "node scripts/init-db.js",
     "refresh:gigantti": "node scripts/run-refresh.js",
+    "discover:gigantti": "node scripts/discover-gigantti-products.js",
     "import:offers": "node scripts/import-offers-json.js",
     "refresh:all-known": "node scripts/refresh-all-known-products.js",
     "link:offers": "node scripts/link-offers-to-products.js",
