@@ -39,7 +39,10 @@ function renderResults(data) {
     return;
   }
 
-  status.textContent = `Found ${matches.length} matching offers`;
+  status.innerHTML = `
+  <span class="deal-icon">$</span>
+  Found ${matches.length} matching offers
+  `;
 
   let html = "";
 
