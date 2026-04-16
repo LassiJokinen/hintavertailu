@@ -12,17 +12,16 @@ const SITEMAP_CANDIDATE_URLS = [
   "https://www.jimms.fi/sitemapindex.xml",
   "https://www.jimms.fi/sitemap/SitemapIndex.xml",
 ];
-const FALLBACK_STRUCTURED_SOURCES = [
-  "https://www.jimms.fi/fi",
-  "https://www.jimms.fi/fi/Product/List/000-0WN",
-  "https://www.jimms.fi/fi/Product/List/000-0WH",
-  "https://www.jimms.fi/fi/Product/List/000-17W",
-];
 const DEFAULT_MAX_SITEMAP_FILES = 10;
-const DEFAULT_MAX_CATEGORY_PAGES = 30;
-const DEFAULT_MAX_PAGINATION_DEPTH = 4;
-const DEFAULT_MAX_PRODUCT_URLS = 200;
+const DEFAULT_MAX_CATEGORY_PAGES = 120;
+const DEFAULT_MAX_CATEGORY_DEPTH = 3;
+const DEFAULT_MAX_PAGINATION_PAGES = 240;
+const DEFAULT_MAX_PAGES_PER_CATEGORY = 25;
+const DEFAULT_MAX_PRODUCT_URLS = 500;
 const DEFAULT_DELAY_MS = 250;
+const DEFAULT_REQUEST_TIMEOUT_MS = 20000;
+const LARGE_SUBCATEGORY_LINK_WARNING_THRESHOLD = 100;
+const MAX_SUBCATEGORY_LINKS_TO_KEEP_WHEN_NOISY = 100;
 const HOMEPAGE_URL = "https://www.jimms.fi/fi";
 const PRIORITY_CATEGORY_KEYWORDS = [
   "kannettava",
@@ -61,6 +60,7 @@ async function main() {
       discoverySource: discovery.source,
       sitemapFilesProcessed: discovery.sitemapFilesProcessed,
       categoryPagesProcessed: discovery.categoryPagesProcessed,
+      subcategoryLinksFound: discovery.subcategoryLinksFound,
       paginationPagesProcessed: discovery.paginationPagesProcessed,
       productUrlsFound: discovery.productUrlsFound,
       newUrlsSaved: 0,
@@ -119,9 +119,12 @@ function parseOptions(args) {
     sitemapIndexUrl: DEFAULT_SITEMAP_INDEX_URL,
     maxSitemapFiles: DEFAULT_MAX_SITEMAP_FILES,
     maxCategoryPages: DEFAULT_MAX_CATEGORY_PAGES,
-    maxPaginationDepth: DEFAULT_MAX_PAGINATION_DEPTH,
+    maxCategoryDepth: DEFAULT_MAX_CATEGORY_DEPTH,
+    maxPaginationPages: DEFAULT_MAX_PAGINATION_PAGES,
+    maxPagesPerCategory: DEFAULT_MAX_PAGES_PER_CATEGORY,
     maxProductUrls: DEFAULT_MAX_PRODUCT_URLS,
     delayMs: DEFAULT_DELAY_MS,
+    requestTimeoutMs: DEFAULT_REQUEST_TIMEOUT_MS,
   };
 
   for (let index = 0; index < args.length; index += 1) {
@@ -151,14 +154,32 @@ function parseOptions(args) {
       continue;
     }
 
-    if (current === "--max-pagination-depth" && args[index + 1]) {
-      options.maxPaginationDepth = toPositiveInteger(args[index + 1], DEFAULT_MAX_PAGINATION_DEPTH);
+    if (current === "--max-category-depth" && args[index + 1]) {
+      options.maxCategoryDepth = toPositiveInteger(args[index + 1], DEFAULT_MAX_CATEGORY_DEPTH);
+      index += 1;
+      continue;
+    }
+
+    if (current === "--max-pagination-pages" && args[index + 1]) {
+      options.maxPaginationPages = toPositiveInteger(args[index + 1], DEFAULT_MAX_PAGINATION_PAGES);
+      index += 1;
+      continue;
+    }
+
+    if (current === "--max-pages-per-category" && args[index + 1]) {
+      options.maxPagesPerCategory = toPositiveInteger(args[index + 1], DEFAULT_MAX_PAGES_PER_CATEGORY);
       index += 1;
       continue;
     }
 
     if (current === "--delay-ms" && args[index + 1]) {
       options.delayMs = toPositiveInteger(args[index + 1], DEFAULT_DELAY_MS);
+      index += 1;
+      continue;
+    }
+
+    if (current === "--request-timeout-ms" && args[index + 1]) {
+      options.requestTimeoutMs = toPositiveInteger(args[index + 1], DEFAULT_REQUEST_TIMEOUT_MS);
       index += 1;
       continue;
     }
@@ -183,8 +204,35 @@ function parseOptions(args) {
       continue;
     }
 
+    if (current.startsWith("--max-category-depth=")) {
+      options.maxCategoryDepth = toPositiveInteger(current.split("=").slice(1).join("="), DEFAULT_MAX_CATEGORY_DEPTH);
+      continue;
+    }
+
+    if (current.startsWith("--max-pagination-pages=")) {
+      options.maxPaginationPages = toPositiveInteger(current.split("=").slice(1).join("="), DEFAULT_MAX_PAGINATION_PAGES);
+      continue;
+    }
+
+    if (current.startsWith("--max-pages-per-category=")) {
+      options.maxPagesPerCategory = toPositiveInteger(current.split("=").slice(1).join("="), DEFAULT_MAX_PAGES_PER_CATEGORY);
+      continue;
+    }
+
+    // Backward-compatible alias from previous implementation.
+    if (current === "--max-pagination-depth" && args[index + 1]) {
+      options.maxPaginationPages = toPositiveInteger(args[index + 1], DEFAULT_MAX_PAGINATION_PAGES);
+      index += 1;
+      continue;
+    }
+
     if (current.startsWith("--max-pagination-depth=")) {
-      options.maxPaginationDepth = toPositiveInteger(current.split("=").slice(1).join("="), DEFAULT_MAX_PAGINATION_DEPTH);
+      options.maxPaginationPages = toPositiveInteger(current.split("=").slice(1).join("="), DEFAULT_MAX_PAGINATION_PAGES);
+      continue;
+    }
+
+    if (current.startsWith("--request-timeout-ms=")) {
+      options.requestTimeoutMs = toPositiveInteger(current.split("=").slice(1).join("="), DEFAULT_REQUEST_TIMEOUT_MS);
       continue;
     }
 
@@ -206,28 +254,47 @@ function toPositiveInteger(value, fallback) {
 }
 
 async function discoverProductUrls(options, existingUrls) {
+  const discovered = new Set();
+
   const sitemapDiscovery = await discoverFromSitemap(options, existingUrls);
-  if (sitemapDiscovery.urls.length > 0) {
-    return {
-      source: "sitemap",
-      sitemapFilesProcessed: sitemapDiscovery.sitemapFilesProcessed,
-      categoryPagesProcessed: 0,
-      paginationPagesProcessed: 0,
-      productUrlsFound: sitemapDiscovery.productUrlsFound,
-      urls: sitemapDiscovery.urls,
-    };
+  for (const url of sitemapDiscovery.urls) {
+    if (discovered.size >= options.maxProductUrls) {
+      break;
+    }
+
+    discovered.add(url);
   }
 
-  console.log("No product URLs from sitemap, using structured fallback source.");
-  const fallbackDiscovery = await discoverFromStructuredFallback(options, existingUrls);
+  const remainingProductCapacity = Math.max(0, options.maxProductUrls - discovered.size);
+  const categoryDiscovery = remainingProductCapacity > 0
+    ? await discoverFromRecursiveCategories({
+      ...options,
+      maxProductUrls: remainingProductCapacity,
+    }, existingUrls)
+    : {
+      categoryPagesProcessed: 0,
+      subcategoryLinksFound: 0,
+      paginationPagesProcessed: 0,
+      productUrlsFound: 0,
+      urls: [],
+    };
+
+  for (const url of categoryDiscovery.urls) {
+    if (discovered.size >= options.maxProductUrls) {
+      break;
+    }
+
+    discovered.add(url);
+  }
 
   return {
-    source: "structured-fallback",
+    source: "sitemap+recursive-categories",
     sitemapFilesProcessed: sitemapDiscovery.sitemapFilesProcessed,
-    categoryPagesProcessed: fallbackDiscovery.categoryPagesProcessed,
-    paginationPagesProcessed: fallbackDiscovery.paginationPagesProcessed,
-    productUrlsFound: sitemapDiscovery.productUrlsFound + fallbackDiscovery.productUrlsFound,
-    urls: fallbackDiscovery.urls,
+    categoryPagesProcessed: categoryDiscovery.categoryPagesProcessed,
+    subcategoryLinksFound: categoryDiscovery.subcategoryLinksFound,
+    paginationPagesProcessed: categoryDiscovery.paginationPagesProcessed,
+    productUrlsFound: sitemapDiscovery.productUrlsFound + categoryDiscovery.productUrlsFound,
+    urls: Array.from(discovered),
   };
 }
 
@@ -247,7 +314,7 @@ async function discoverFromSitemap(options, existingUrls) {
     console.log(`Scanning sitemap: ${sitemapUrl}`);
 
     try {
-      const xml = await fetchText(sitemapUrl, options.delayMs);
+      const xml = await fetchText(sitemapUrl, options.delayMs, options.requestTimeoutMs);
       const urls = parseLocUrls(xml)
         .map((url) => normalizeUrl(url))
         .filter((url) => isRealProductUrl(url));
@@ -295,7 +362,7 @@ async function loadSitemapSources(options) {
     seen.add(dedupeKey);
 
     try {
-      const xml = await fetchText(candidate, options.delayMs);
+      const xml = await fetchText(candidate, options.delayMs, options.requestTimeoutMs);
       const locUrls = parseLocUrls(xml)
         .map((url) => normalizeAbsoluteUrl(url))
         .filter(Boolean);
@@ -323,14 +390,16 @@ function isUrlSetXml(xml) {
   return /<urlset\b/i.test(xml);
 }
 
-async function discoverFromStructuredFallback(options, existingUrls) {
+async function discoverFromRecursiveCategories(options, existingUrls) {
   const discovered = new Set();
   let productUrlsFound = 0;
   let categoryPagesProcessed = 0;
   let paginationPagesProcessed = 0;
+  let subcategoryLinksFound = 0;
 
   const categoryQueue = await loadInitialCategoryQueue(options);
   const seenCategories = new Set(categoryQueue.map((entry) => entry.url));
+  let paginationBudgetRemaining = options.maxPaginationPages;
 
   while (categoryQueue.length > 0) {
     if (discovered.size >= options.maxProductUrls) {
@@ -342,12 +411,43 @@ async function discoverFromStructuredFallback(options, existingUrls) {
     }
 
     const category = categoryQueue.shift();
+    if (!category || !category.url) {
+      continue;
+    }
+
+    if (category.depth > options.maxCategoryDepth) {
+      continue;
+    }
+
+    if (paginationBudgetRemaining < 0) {
+      paginationBudgetRemaining = 0;
+    }
+
     categoryPagesProcessed += 1;
-    console.log(`Scanning category: ${category.url}`);
+    console.log(
+      `[progress] category-start url=${category.url} depth=${category.depth} ` +
+      `categoryPagesProcessed=${categoryPagesProcessed} paginationPagesProcessed=${paginationPagesProcessed} ` +
+      `productUrlsFound=${productUrlsFound} queueRemaining=${categoryQueue.length}`
+    );
 
     try {
-      const crawlResult = await crawlCategoryPages(category.url, options);
-      paginationPagesProcessed += crawlResult.pagesProcessed;
+      const crawlResult = await crawlCategoryWithPagination(
+        category.url,
+        options,
+        paginationBudgetRemaining,
+        category.depth,
+        ({ pageUrl, pageDepth, paginationPage, paginationPagesProcessedInCategory }) => {
+          const totalPaginationAfterCurrentPage = paginationPagesProcessed + paginationPagesProcessedInCategory;
+          console.log(
+            `[progress] page url=${pageUrl} categoryUrl=${category.url} categoryDepth=${category.depth} ` +
+            `pageDepth=${pageDepth} paginationPage=${paginationPage} categoryPagesProcessed=${categoryPagesProcessed} ` +
+            `paginationPagesProcessed=${totalPaginationAfterCurrentPage} productUrlsFound=${productUrlsFound} ` +
+            `queueRemaining=${categoryQueue.length}`
+          );
+        }
+      );
+      paginationPagesProcessed += crawlResult.paginationPagesProcessed;
+      paginationBudgetRemaining = Math.max(0, paginationBudgetRemaining - crawlResult.paginationPagesProcessed);
 
       for (const url of crawlResult.productUrls) {
         productUrlsFound += 1;
@@ -364,7 +464,22 @@ async function discoverFromStructuredFallback(options, existingUrls) {
         existingUrls.add(url);
       }
 
-      for (const linkedCategoryUrl of crawlResult.linkedCategoryUrls) {
+      subcategoryLinksFound += crawlResult.linkedCategoryUrls.length;
+      const linksForQueue = limitNoisySubcategoryLinks(category.url, crawlResult.linkedCategoryUrls);
+
+      if (crawlResult.linkedCategoryUrls.length > LARGE_SUBCATEGORY_LINK_WARNING_THRESHOLD) {
+        console.log(
+          `[warning] noisy category links trimmed: ` +
+          `url=${category.url} depth=${category.depth} found=${crawlResult.linkedCategoryUrls.length} kept=${linksForQueue.length}`
+        );
+      }
+
+      for (const linkedCategoryUrl of linksForQueue) {
+
+        if (category.depth >= options.maxCategoryDepth) {
+          continue;
+        }
+
         if (seenCategories.has(linkedCategoryUrl)) {
           continue;
         }
@@ -374,8 +489,22 @@ async function discoverFromStructuredFallback(options, existingUrls) {
         }
 
         seenCategories.add(linkedCategoryUrl);
-        categoryQueue.push({ url: linkedCategoryUrl, score: scoreCategory(linkedCategoryUrl, "") });
+        categoryQueue.push({
+          url: linkedCategoryUrl,
+          depth: category.depth + 1,
+          score: scoreCategory(linkedCategoryUrl, "") - (category.depth + 1) * 2,
+        });
       }
+
+      if (paginationBudgetRemaining <= 0) {
+        console.log("Pagination budget exhausted for this run.");
+      }
+
+      console.log(
+        `[progress] category-done url=${category.url} depth=${category.depth} ` +
+        `categoryPagesProcessed=${categoryPagesProcessed} paginationPagesProcessed=${paginationPagesProcessed} ` +
+        `productUrlsFound=${productUrlsFound} queueRemaining=${categoryQueue.length}`
+      );
 
       categoryQueue.sort((a, b) => b.score - a.score);
     } catch (error) {
@@ -385,6 +514,7 @@ async function discoverFromStructuredFallback(options, existingUrls) {
 
   return {
     categoryPagesProcessed,
+    subcategoryLinksFound,
     paginationPagesProcessed,
     productUrlsFound,
     urls: Array.from(discovered),
@@ -395,8 +525,11 @@ async function loadInitialCategoryQueue(options) {
   const byUrl = new Map();
 
   try {
-    const html = await fetchText(HOMEPAGE_URL, options.delayMs);
-    const menuCategories = extractMenuCategoryCandidates(html);
+    const html = await fetchText(HOMEPAGE_URL, options.delayMs, options.requestTimeoutMs);
+    const menuCategories = extractCategoryLinksFromHtml(html, {
+      includeJsonLinks: true,
+      allowQuery: false,
+    });
 
     for (const category of menuCategories) {
       const normalized = normalizeCategoryUrl(category.url);
@@ -407,22 +540,11 @@ async function loadInitialCategoryQueue(options) {
       const score = scoreCategory(normalized, category.label || "");
       const existing = byUrl.get(normalized);
       if (!existing || score > existing.score) {
-        byUrl.set(normalized, { url: normalized, score });
+        byUrl.set(normalized, { url: normalized, depth: 0, score });
       }
     }
   } catch (error) {
-    console.log(`Homepage menu discovery failed, using static category sources: ${error.message}`);
-  }
-
-  for (const fallbackUrl of FALLBACK_STRUCTURED_SOURCES) {
-    const normalized = normalizeCategoryUrl(fallbackUrl);
-    if (!normalized) {
-      continue;
-    }
-
-    if (!byUrl.has(normalized)) {
-      byUrl.set(normalized, { url: normalized, score: scoreCategory(normalized, "") });
-    }
+    console.log(`Homepage category discovery failed: ${error.message}`);
   }
 
   return Array.from(byUrl.values())
@@ -430,8 +552,38 @@ async function loadInitialCategoryQueue(options) {
     .slice(0, options.maxCategoryPages * 2);
 }
 
-function extractMenuCategoryCandidates(html) {
+function extractCategoryLinksFromHtml(html, options = {}) {
+  const opts = {
+    includeJsonLinks: true,
+    allowQuery: false,
+    ...options,
+  };
+
   const results = [];
+  const byUrl = new Map();
+
+  const addCandidate = (candidateUrl, label) => {
+    const normalized = normalizeCategoryUrl(candidateUrl, {
+      keepPaginationQuery: false,
+    });
+    if (!normalized) {
+      return;
+    }
+
+    if (!opts.allowQuery && hasQueryString(candidateUrl)) {
+      return;
+    }
+
+    if (looksLikeFacetOrFilterLink(candidateUrl)) {
+      return;
+    }
+
+    const existing = byUrl.get(normalized);
+    const resolvedLabel = String(label || "").trim();
+    if (!existing || (resolvedLabel && !existing.label)) {
+      byUrl.set(normalized, { url: normalized, label: resolvedLabel });
+    }
+  };
 
   const anchorPattern = /<a[^>]+href\s*=\s*["']([^"']+)["'][^>]*>([\s\S]*?)<\/a>/gi;
   let anchorMatch;
@@ -443,16 +595,32 @@ function extractMenuCategoryCandidates(html) {
     }
 
     const label = cleanHtmlText(anchorMatch[2] || "");
-    results.push({ url: href, label });
+    addCandidate(href, label);
   }
 
-  const jsonPattern = /"(?:url|href)"\s*:\s*"(\/fi\/Product\/List\/[^"\\]+)"(?:[^{}]{0,180}?"(?:name|title|label)"\s*:\s*"([^"\\]*)")?/gi;
-  let jsonMatch;
+  if (opts.includeJsonLinks) {
+    const jsonPattern = /"(?:url|href)"\s*:\s*"(\/fi\/Product\/List\/[^"\\]+)"(?:[^{}]{0,180}?"(?:name|title|label)"\s*:\s*"([^"\\]*)")?/gi;
+    let jsonMatch;
 
-  while ((jsonMatch = jsonPattern.exec(html)) !== null) {
-    const href = decodeJsonLikeString(jsonMatch[1] || "");
-    const label = decodeJsonLikeString(jsonMatch[2] || "");
-    results.push({ url: href, label });
+    while ((jsonMatch = jsonPattern.exec(html)) !== null) {
+      const href = decodeJsonLikeString(jsonMatch[1] || "");
+      const label = decodeJsonLikeString(jsonMatch[2] || "");
+      addCandidate(href, label);
+    }
+  }
+
+  const hrefPattern = /href\s*=\s*["']([^"']+)["']/gi;
+  let hrefMatch;
+
+  while ((hrefMatch = hrefPattern.exec(html)) !== null) {
+    const href = decodeHtmlEntities((hrefMatch[1] || "").trim());
+    if (/\/fi\/Product\/List\//i.test(href)) {
+      addCandidate(href, "");
+    }
+  }
+
+  for (const value of byUrl.values()) {
+    results.push(value);
   }
 
   return results;
@@ -480,20 +648,163 @@ function scoreCategory(url, label) {
   return score;
 }
 
-async function crawlCategoryPages(categoryUrl, options) {
-  const visitedPages = new Set();
-  const queue = [{ url: categoryUrl, depth: 1 }];
-  const productUrls = new Set();
-  const linkedCategoryUrls = new Set();
-  let pagesProcessed = 0;
+function extractSubcategoryLinksFromCategoryPage(html, currentCategoryUrl) {
+  const categoryContentHtml = extractCategoryContentHtml(html);
+  const links = extractCategoryLinksFromHtml(categoryContentHtml, {
+    includeJsonLinks: false,
+    allowQuery: false,
+  }).map((entry) => entry.url);
 
-  while (queue.length > 0) {
-    const current = queue.shift();
-    if (!current || !current.url) {
+  return rankSubcategoryLinks(currentCategoryUrl, links);
+}
+
+function extractCategoryContentHtml(html) {
+  const source = String(html || "");
+  if (!source) {
+    return "";
+  }
+
+  // Remove global sections before extracting links so header/footer/nav links do not pollute subcategory discovery.
+  const withoutGlobalSections = source
+    .replace(/<header\b[\s\S]*?<\/header>/gi, " ")
+    .replace(/<footer\b[\s\S]*?<\/footer>/gi, " ")
+    .replace(/<nav\b[\s\S]*?<\/nav>/gi, " ")
+    .replace(/<aside\b[\s\S]*?<\/aside>/gi, " ");
+
+  const mainMatches = withoutGlobalSections.match(/<main\b[\s\S]*?<\/main>/gi) || [];
+  if (mainMatches.length > 0) {
+    return mainMatches.join("\n");
+  }
+
+  const contentBlocks = withoutGlobalSections.match(
+    /<(?:section|div)\b[^>]*(?:id|class)\s*=\s*["'][^"']*(?:content|main|category|product-list|listing|results)[^"']*["'][^>]*>[\s\S]*?<\/(?:section|div)>/gi
+  ) || [];
+
+  if (contentBlocks.length > 0) {
+    return contentBlocks.join("\n");
+  }
+
+  return withoutGlobalSections;
+}
+
+function limitNoisySubcategoryLinks(parentCategoryUrl, links) {
+  const ranked = rankSubcategoryLinks(parentCategoryUrl, links);
+
+  if (ranked.length <= LARGE_SUBCATEGORY_LINK_WARNING_THRESHOLD) {
+    return ranked;
+  }
+
+  return ranked.slice(0, MAX_SUBCATEGORY_LINKS_TO_KEEP_WHEN_NOISY);
+}
+
+function rankSubcategoryLinks(parentCategoryUrl, links) {
+  const parent = normalizeCategoryUrl(parentCategoryUrl, { keepPaginationQuery: false });
+  const parentBase = getCategoryBaseKey(parent || parentCategoryUrl);
+  const parentCode = getCategoryCode(parent || parentCategoryUrl);
+  const unique = new Map();
+
+  for (const link of links) {
+    const normalized = normalizeCategoryUrl(link, { keepPaginationQuery: false });
+    if (!normalized) {
       continue;
     }
 
-    if (current.depth > options.maxPaginationDepth) {
+    if (parent && normalized === parent) {
+      continue;
+    }
+
+    if (looksLikeFacetOrFilterLink(normalized)) {
+      continue;
+    }
+
+    let score = scoreCategory(normalized, "");
+
+    if (getCategoryBaseKey(normalized) === parentBase) {
+      score += 10;
+    }
+
+    if (getCategoryCode(normalized) === parentCode) {
+      score += 8;
+    }
+
+    if (normalized.split("/").length <= 9) {
+      score += 2;
+    }
+
+    const existing = unique.get(normalized);
+    if (!existing || score > existing.score) {
+      unique.set(normalized, { url: normalized, score });
+    }
+  }
+
+  return Array.from(unique.values())
+    .sort((a, b) => b.score - a.score || a.url.length - b.url.length)
+    .map((entry) => entry.url);
+}
+
+function hasQueryString(value) {
+  try {
+    const parsed = new URL(value, "https://www.jimms.fi");
+    return parsed.searchParams.toString().length > 0;
+  } catch (error) {
+    return /\?/.test(String(value || ""));
+  }
+}
+
+function looksLikeFacetOrFilterLink(value) {
+  const text = String(value || "").toLowerCase();
+
+  if (!text) {
+    return false;
+  }
+
+  if (!text.includes("/fi/product/list/")) {
+    return false;
+  }
+
+  return [
+    "?",
+    "&fq=",
+    "?fq=",
+    "sort=",
+    "order=",
+    "minprice=",
+    "maxprice=",
+    "brand=",
+    "manufacturer=",
+    "availability=",
+    "instock=",
+    "view=",
+    "perpage=",
+    "limit=",
+  ].some((needle) => text.includes(needle));
+}
+
+async function crawlCategoryWithPagination(
+  categoryUrl,
+  options,
+  paginationBudget,
+  categoryDepth,
+  onPageProgress = null
+) {
+  const visitedPages = new Set();
+  const queue = [{ url: categoryUrl, depth: 0 }];
+  const productUrls = new Set();
+  const linkedCategoryUrls = new Set();
+  let paginationPagesProcessed = 0;
+  let pagesProcessedForCategory = 0;
+
+  while (queue.length > 0) {
+    if (pagesProcessedForCategory >= options.maxPagesPerCategory) {
+      console.log(
+        `[safeguard] max pages-per-category reached: ` +
+        `url=${categoryUrl} depth=${categoryDepth} maxPagesPerCategory=${options.maxPagesPerCategory}`
+      );
+      break;
+    }
+
+    const current = queue.shift();
+    if (!current || !current.url) {
       continue;
     }
 
@@ -501,10 +812,26 @@ async function crawlCategoryPages(categoryUrl, options) {
       continue;
     }
 
-    visitedPages.add(current.url);
-    pagesProcessed += 1;
+    if (current.depth > 0 && paginationPagesProcessed >= paginationBudget) {
+      continue;
+    }
 
-    const html = await fetchText(current.url, options.delayMs);
+    visitedPages.add(current.url);
+    pagesProcessedForCategory += 1;
+    if (current.depth > 0) {
+      paginationPagesProcessed += 1;
+    }
+
+    if (typeof onPageProgress === "function") {
+      onPageProgress({
+        pageUrl: current.url,
+        pageDepth: current.depth,
+        paginationPage: getPaginationPageNumber(current.url),
+        paginationPagesProcessedInCategory: paginationPagesProcessed,
+      });
+    }
+
+    const html = await fetchText(current.url, options.delayMs, options.requestTimeoutMs);
 
     const pageProducts = extractProductUrlsFromHtml(html)
       .map((url) => normalizeUrl(url))
@@ -514,22 +841,22 @@ async function crawlCategoryPages(categoryUrl, options) {
       productUrls.add(url);
     }
 
-    const categoryLinks = extractCategoryLinksFromHtml(html)
-      .map((url) => normalizeCategoryUrl(url))
+    const categoryLinks = extractSubcategoryLinksFromCategoryPage(html, current.url)
+      .map((url) => normalizeCategoryUrl(url, { keepPaginationQuery: false }))
       .filter(Boolean);
 
     for (const linkedCategoryUrl of categoryLinks) {
       linkedCategoryUrls.add(linkedCategoryUrl);
     }
 
-    if (current.depth >= options.maxPaginationDepth) {
+    if (paginationPagesProcessed >= paginationBudget) {
       continue;
     }
 
     const paginationUrls = extractPaginationUrls(html, current.url);
     const fallbackPagination = buildFallbackPaginationCandidates(current.url, current.depth + 1);
     const nextPages = [...paginationUrls, ...fallbackPagination]
-      .map((url) => normalizeCategoryUrl(url))
+      .map((url) => normalizeCategoryUrl(url, { keepPaginationQuery: true }))
       .filter(Boolean);
 
     for (const nextUrl of nextPages) {
@@ -540,35 +867,16 @@ async function crawlCategoryPages(categoryUrl, options) {
   }
 
   return {
-    pagesProcessed,
+    paginationPagesProcessed,
     productUrls: Array.from(productUrls),
     linkedCategoryUrls: Array.from(linkedCategoryUrls),
   };
 }
 
-function extractCategoryLinksFromHtml(html) {
-  const categoryUrls = new Set();
-  const hrefPattern = /href\s*=\s*["']([^"']+)["']/gi;
-  let match;
-
-  while ((match = hrefPattern.exec(html)) !== null) {
-    const href = decodeHtmlEntities((match[1] || "").trim());
-    if (!href) {
-      continue;
-    }
-
-    if (/\/fi\/Product\/List\//i.test(href)) {
-      categoryUrls.add(href);
-    }
-  }
-
-  return Array.from(categoryUrls);
-}
-
 function extractPaginationUrls(html, currentCategoryUrl) {
   const paginationUrls = new Set();
   const hrefPattern = /href\s*=\s*["']([^"']+)["']/gi;
-  const current = normalizeCategoryUrl(currentCategoryUrl);
+  const current = normalizeCategoryUrl(currentCategoryUrl, { keepPaginationQuery: true });
 
   if (!current) {
     return [];
@@ -579,7 +887,7 @@ function extractPaginationUrls(html, currentCategoryUrl) {
 
   while ((match = hrefPattern.exec(html)) !== null) {
     const href = decodeHtmlEntities((match[1] || "").trim());
-    const normalized = normalizeCategoryUrl(href);
+    const normalized = normalizeCategoryUrl(href, { keepPaginationQuery: true });
     if (!normalized) {
       continue;
     }
@@ -597,7 +905,7 @@ function extractPaginationUrls(html, currentCategoryUrl) {
 }
 
 function buildFallbackPaginationCandidates(categoryUrl, pageNumber) {
-  const base = normalizeCategoryUrl(categoryUrl);
+  const base = normalizeCategoryUrl(categoryUrl, { keepPaginationQuery: false });
   if (!base) {
     return [];
   }
@@ -642,6 +950,16 @@ function getCategoryBaseKey(url) {
   }
 }
 
+function getCategoryCode(url) {
+  try {
+    const parsed = new URL(url);
+    const parts = parsed.pathname.split("/").filter(Boolean);
+    return String(parts[3] || "").toLowerCase();
+  } catch (error) {
+    return "";
+  }
+}
+
 function extractProductUrlsFromHtml(html) {
   const urls = new Set();
 
@@ -673,13 +991,43 @@ function extractProductUrlsFromHtml(html) {
   return Array.from(urls);
 }
 
-async function fetchText(url, delayMs) {
-  const response = await fetch(url, {
-    headers: {
-      "user-agent": "Mozilla/5.0 PriceCompareSchoolProjectBot/1.0",
-      accept: "application/xml,text/xml,text/html,application/xhtml+xml,application/json,text/plain",
-    },
-  });
+function getPaginationPageNumber(url) {
+  try {
+    const parsed = new URL(url);
+    const page = parsed.searchParams.get("page") || parsed.searchParams.get("p") || parsed.searchParams.get("Page");
+    const parsedPage = Number.parseInt(String(page || ""), 10);
+    if (Number.isFinite(parsedPage) && parsedPage > 0) {
+      return parsedPage;
+    }
+  } catch (error) {
+    // Ignore invalid URL parsing for progress info.
+  }
+
+  return 1;
+}
+
+async function fetchText(url, delayMs, timeoutMs) {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), timeoutMs);
+  let response;
+
+  try {
+    response = await fetch(url, {
+      headers: {
+        "user-agent": "Mozilla/5.0 PriceCompareSchoolProjectBot/1.0",
+        accept: "application/xml,text/xml,text/html,application/xhtml+xml,application/json,text/plain",
+      },
+      signal: controller.signal,
+    });
+  } catch (error) {
+    if (error && error.name === "AbortError") {
+      throw new Error(`Request timed out after ${timeoutMs}ms`);
+    }
+
+    throw error;
+  } finally {
+    clearTimeout(timeout);
+  }
 
   if (delayMs > 0) {
     await sleep(delayMs);
@@ -792,7 +1140,12 @@ function normalizeUrl(value) {
   }
 }
 
-function normalizeCategoryUrl(value) {
+function normalizeCategoryUrl(value, options = {}) {
+  const config = {
+    keepPaginationQuery: false,
+    ...options,
+  };
+
   if (!value) {
     return null;
   }
@@ -817,7 +1170,28 @@ function normalizeCategoryUrl(value) {
       return null;
     }
 
-    parsed.pathname = `/fi/Product/List/${pathParts.slice(3).join("/")}`;
+    const normalizedTail = pathParts
+      .slice(3)
+      .map((part) => encodeURIComponent(decodeURIComponent(part)).replace(/%2F/gi, "/"));
+
+    if (normalizedTail.length < 1) {
+      return null;
+    }
+
+    parsed.pathname = `/fi/Product/List/${normalizedTail.join("/")}`.replace(/\/+$/, "");
+
+    if (config.keepPaginationQuery) {
+      const pageValue = parsed.searchParams.get("page") || parsed.searchParams.get("p") || parsed.searchParams.get("Page");
+      const page = Number.parseInt(String(pageValue || ""), 10);
+      parsed.search = "";
+
+      if (Number.isFinite(page) && page > 1) {
+        parsed.searchParams.set("page", String(page));
+      }
+    } else {
+      parsed.search = "";
+    }
+
     parsed.hash = "";
     return parsed.toString();
   } catch (error) {
