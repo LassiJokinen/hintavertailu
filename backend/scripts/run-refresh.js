@@ -1,5 +1,8 @@
 const { scrapeGiganttiProduct } = require("../src/scrapers/gigantti");
 const { get, run, closeDb } = require("../src/db");
+const { ensureOfferMaintenanceColumns } = require("../src/offer-maintenance");
+const { calculateTotal, roundMoney } = require("../src/money");
+const { linkOfferToCanonicalProduct } = require("../src/offer-linking");
 
 const TEST_URL =
   process.argv[2] ||
@@ -7,11 +10,17 @@ const TEST_URL =
 
 async function main() {
   try {
+    const ready = await ensureOfferMaintenanceColumns();
+    if (!ready) {
+      throw new Error("offers table not found. Run `npm run init-db` first.");
+    }
+
     console.log(`Scraping URL: ${TEST_URL}`);
     const result = await scrapeGiganttiProduct(TEST_URL);
 
     await upsertRawStoreProduct(result);
-    await upsertOffer(result);
+    const upsertResult = await upsertOffer(result);
+    await linkOfferToCanonicalProduct(upsertResult.id);
 
     console.log("Scrape result:");
     console.log(JSON.stringify(result, null, 2));
@@ -58,8 +67,8 @@ async function upsertOffer(product) {
   const shipping = Number(product.shipping || 0);
   const price = product.price === null ? null : Number(product.price);
   const total = product.total === null || product.total === undefined
-    ? (price === null ? null : Number((price + shipping).toFixed(2)))
-    : Number(product.total);
+    ? calculateTotal(price, shipping)
+    : roundMoney(product.total);
 
   const params = [
     product.store,
@@ -75,6 +84,11 @@ async function upsertOffer(product) {
     product.ean || "",
     product.mpn || "",
     product.inStock ? 1 : 0,
+    1,
+    0,
+    null,
+    null,
+    null,
   ];
 
   if (existing) {
@@ -82,21 +96,25 @@ async function upsertOffer(product) {
       `UPDATE offers
        SET store = ?, title = ?, price = ?, shipping = ?, total = ?, currency = ?,
            url = ?, brand = ?, model = ?, sku = ?, ean = ?, mpn = ?, in_stock = ?,
-           fetched_at = CURRENT_TIMESTAMP
+           is_active = ?, retry_count = ?, last_error = ?, last_error_at = ?,
+           last_status_code = ?, fetched_at = CURRENT_TIMESTAMP
        WHERE id = ?`,
       [...params, existing.id]
     );
-    return;
+    return { id: existing.id, wasUpdated: true };
   }
 
-  await run(
+  const result = await run(
     `INSERT INTO offers (
       store, title, price, shipping, total, currency, url,
-      brand, model, sku, ean, mpn, in_stock
+      brand, model, sku, ean, mpn, in_stock,
+      is_active, retry_count, last_error, last_error_at, last_status_code
     )
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     params
   );
+
+  return { id: result.lastID, wasUpdated: false };
 }
 
 main();

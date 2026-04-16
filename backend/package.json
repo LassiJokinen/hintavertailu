@@ -7,7 +7,11 @@
     "start": "node src/server.js",
     "init-db": "node scripts/init-db.js",
     "refresh:gigantti": "node scripts/run-refresh.js",
-    "import:offers": "node scripts/import-offers-json.js"
+    "import:offers": "node scripts/import-offers-json.js",
+    "refresh:all-known": "node scripts/refresh-all-known-products.js",
+    "link:offers": "node scripts/link-offers-to-products.js",
+    "offers:list-failed": "node scripts/list-failed-offers.js",
+    "offers:mark-stale": "node scripts/mark-stale-offers.js"
   },
   "dependencies": {
     "cheerio": "^1.0.0",

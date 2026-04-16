@@ -50,6 +50,8 @@ async function compareCurrentTab(sendResponse) {
 
     const data = await backendResponse.json();
 
+    console.log("EXTRACTED PRODUCT:", extractedProduct);
+    
     sendResponse({
       success: true,
       data

@@ -1,6 +1,8 @@
 const fs = require("fs");
 const path = require("path");
 const { get, run, closeDb } = require("../src/db");
+const { calculateTotal, roundMoney } = require("../src/money");
+const { linkOfferToCanonicalProduct } = require("../src/offer-linking");
 
 const OFFERS_JSON_PATH = path.join(__dirname, "..", "data", "offers.json");
 
@@ -9,17 +11,29 @@ async function main() {
     const offers = readOffersJson();
     let inserted = 0;
     let updated = 0;
+    let linked = 0;
+    let createdProducts = 0;
 
     for (const offer of offers) {
-      const wasUpdated = await upsertOffer(offer);
-      if (wasUpdated) {
+      const upsertResult = await upsertOffer(offer);
+      if (upsertResult.wasUpdated) {
         updated += 1;
       } else {
         inserted += 1;
       }
+
+      const linkResult = await linkOfferToCanonicalProduct(upsertResult.id);
+      if (linkResult.linked) {
+        linked += 1;
+      }
+      if (linkResult.createdProduct) {
+        createdProducts += 1;
+      }
     }
 
-    console.log(`Imported offers from JSON. Inserted: ${inserted}, Updated: ${updated}`);
+    console.log(
+      `Imported offers from JSON. Inserted: ${inserted}, Updated: ${updated}, Linked: ${linked}, Products created: ${createdProducts}`
+    );
   } catch (error) {
     console.error("Import failed:", error.message);
     process.exitCode = 1;
@@ -48,8 +62,8 @@ async function upsertOffer(offer) {
   const shipping = Number(offer.shipping || 0);
   const price = offer.price === null || offer.price === undefined ? null : Number(offer.price);
   const total = offer.total === null || offer.total === undefined
-    ? (price === null ? null : Number((price + shipping).toFixed(2)))
-    : Number(offer.total);
+    ? calculateTotal(price, shipping)
+    : roundMoney(offer.total);
 
   const params = [
     offer.store || "",
@@ -76,10 +90,10 @@ async function upsertOffer(offer) {
        WHERE id = ?`,
       [...params, existing.id]
     );
-    return true;
+    return { id: existing.id, wasUpdated: true };
   }
 
-  await run(
+  const result = await run(
     `INSERT INTO offers (
       store, title, price, shipping, total, currency, url,
       brand, model, sku, ean, mpn, in_stock
@@ -88,7 +102,7 @@ async function upsertOffer(offer) {
     params
   );
 
-  return false;
+  return { id: result.lastID, wasUpdated: false };
 }
 
 main();
