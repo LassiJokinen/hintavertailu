@@ -6,19 +6,19 @@ function startComparison() {
   const status = document.getElementById("status");
   const results = document.getElementById("results");
 
-  status.textContent = "Scanning current page...";
+  status.textContent = "Skannataan nykyistä sivua...";
   results.innerHTML = "";
 
   chrome.runtime.sendMessage(
     { type: "COMPARE_CURRENT_TAB" },
     (response) => {
       if (!response) {
-        showError("No response from extension");
+        showError("Laajennus ei vastannut");
         return;
       }
 
       if (!response.success) {
-        showError(response.error || "Unknown error");
+        showError(response.error || "Tuntematon virhe");
         return;
       }
 
@@ -34,15 +34,15 @@ function renderResults(data) {
   const matches = data.matches || [];
 
   if (matches.length === 0) {
-    status.textContent = "No matching offers found";
+    status.textContent = "Vastaavia tarjouksia ei löytynyt";
     results.innerHTML =
-      `<div class="empty">No cheaper offers available.</div>`;
+      `<div class="empty">Edullisempia tarjouksia ei löytynyt.</div>`;
     return;
   }
 
   status.innerHTML = `
     <span class="deal-icon">$</span>
-    Found ${matches.length} matching offers
+    Löytyi ${matches.length} vastaavaa tarjousta
   `;
 
   let html = "";
