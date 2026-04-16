@@ -52,43 +52,44 @@ function renderResults(data) {
       `https://www.google.com/s2/favicons?domain=${match.store}&sz=64`;
 
     html += `
-  <div class="result-card clickable-offer" data-index="${index}">
-    <div class="offer-inner">
-      <div class="result-left">
-        <img class="store-logo" src="${logoUrl}" alt="${match.store}">
-      </div>
+      <div class="result-card clickable-offer" data-index="${index}">
+        <div class="offer-inner">
+          <div class="result-left">
+            <img class="store-logo" src="${logoUrl}" alt="${match.store}">
+          </div>
 
-      <div class="result-center">
-        <div class="product-title">${match.title}</div>
-        <div class="store-name">${match.store}</div>
-        <div class="price">${match.price} ${match.currency}</div>
-      </div>
+          <div class="result-center">
+            <div class="product-title">${match.title}</div>
+            <div class="store-name">${match.store}</div>
+            <div class="price">${match.price} ${match.currency}</div>
+          </div>
 
-      <div class="result-right">
-        <button class="visit-btn" data-index="${index}">
-          ↗
-        </button>
+          <div class="result-right">
+            <button class="visit-btn" data-index="${index}">
+              ↗
+            </button>
+          </div>
+        </div>
       </div>
-    </div>
-  </div>
-`;
+    `;
   });
 
   results.innerHTML = html;
+
+  function openOffer(match) {
+    if (!match.url) {
+      showError("Tuotteen linkkiä ei löytynyt");
+      return;
+    }
+
+    chrome.tabs.create({ url: match.url });
+  }
 
   document.querySelectorAll(".clickable-offer").forEach((card) => {
     card.addEventListener("click", () => {
       const index = Number(card.dataset.index);
       const match = matches[index];
-
-      const searchUrl = buildStoreSearchUrl(
-        match.store,
-        match.title
-      );
-
-      if (searchUrl) {
-        chrome.tabs.create({ url: searchUrl });
-      }
+      openOffer(match);
     });
   });
 
@@ -98,35 +99,9 @@ function renderResults(data) {
 
       const index = Number(button.dataset.index);
       const match = matches[index];
-
-      const searchUrl = buildStoreSearchUrl(
-        match.store,
-        match.title
-      );
-
-      if (searchUrl) {
-        chrome.tabs.create({ url: searchUrl });
-      }
+      openOffer(match);
     });
   });
-}
-
-function buildStoreSearchUrl(store, title) {
-  const query = encodeURIComponent(title);
-
-  if (store.includes("gigantti")) {
-    return `https://www.gigantti.fi/search?q=${query}`;
-  }
-
-  if (store.includes("verkkokauppa")) {
-    return `https://www.verkkokauppa.com/fi/search?query=${query}`;
-  }
-
-  if (store.includes("jimms")) {
-    return `https://www.jimms.fi/fi/Product/Search?q=${query}`;
-  }
-
-  return `https://${store}/search?q=${query}`;
 }
 
 function showError(message) {
