@@ -14,12 +14,37 @@ const SITEMAP_CANDIDATE_URLS = [
 ];
 const FALLBACK_STRUCTURED_SOURCES = [
   "https://www.jimms.fi/fi",
+  "https://www.jimms.fi/fi/Product/List/000-0WN",
   "https://www.jimms.fi/fi/Product/List/000-0WH",
   "https://www.jimms.fi/fi/Product/List/000-17W",
 ];
 const DEFAULT_MAX_SITEMAP_FILES = 10;
+const DEFAULT_MAX_CATEGORY_PAGES = 30;
+const DEFAULT_MAX_PAGINATION_DEPTH = 4;
 const DEFAULT_MAX_PRODUCT_URLS = 200;
 const DEFAULT_DELAY_MS = 250;
+const HOMEPAGE_URL = "https://www.jimms.fi/fi";
+const PRIORITY_CATEGORY_KEYWORDS = [
+  "kannettava",
+  "laptop",
+  "apple",
+  "mac",
+  "emolevy",
+  "motherboard",
+  "prosessori",
+  "cpu",
+  "naytonohjain",
+  "näytönohjain",
+  "gpu",
+  "ssd",
+  "kiintolevy",
+  "hard drive",
+  "virtalahde",
+  "virtalähde",
+  "power supply",
+  "kotelo",
+  "case",
+];
 
 async function main() {
   try {
@@ -35,6 +60,8 @@ async function main() {
     const summary = {
       discoverySource: discovery.source,
       sitemapFilesProcessed: discovery.sitemapFilesProcessed,
+      categoryPagesProcessed: discovery.categoryPagesProcessed,
+      paginationPagesProcessed: discovery.paginationPagesProcessed,
       productUrlsFound: discovery.productUrlsFound,
       newUrlsSaved: 0,
       productsScraped: 0,
@@ -91,6 +118,8 @@ function parseOptions(args) {
   const options = {
     sitemapIndexUrl: DEFAULT_SITEMAP_INDEX_URL,
     maxSitemapFiles: DEFAULT_MAX_SITEMAP_FILES,
+    maxCategoryPages: DEFAULT_MAX_CATEGORY_PAGES,
+    maxPaginationDepth: DEFAULT_MAX_PAGINATION_DEPTH,
     maxProductUrls: DEFAULT_MAX_PRODUCT_URLS,
     delayMs: DEFAULT_DELAY_MS,
   };
@@ -116,6 +145,18 @@ function parseOptions(args) {
       continue;
     }
 
+    if (current === "--max-category-pages" && args[index + 1]) {
+      options.maxCategoryPages = toPositiveInteger(args[index + 1], DEFAULT_MAX_CATEGORY_PAGES);
+      index += 1;
+      continue;
+    }
+
+    if (current === "--max-pagination-depth" && args[index + 1]) {
+      options.maxPaginationDepth = toPositiveInteger(args[index + 1], DEFAULT_MAX_PAGINATION_DEPTH);
+      index += 1;
+      continue;
+    }
+
     if (current === "--delay-ms" && args[index + 1]) {
       options.delayMs = toPositiveInteger(args[index + 1], DEFAULT_DELAY_MS);
       index += 1;
@@ -134,6 +175,16 @@ function parseOptions(args) {
 
     if (current.startsWith("--max-product-urls=")) {
       options.maxProductUrls = toPositiveInteger(current.split("=").slice(1).join("="), DEFAULT_MAX_PRODUCT_URLS);
+      continue;
+    }
+
+    if (current.startsWith("--max-category-pages=")) {
+      options.maxCategoryPages = toPositiveInteger(current.split("=").slice(1).join("="), DEFAULT_MAX_CATEGORY_PAGES);
+      continue;
+    }
+
+    if (current.startsWith("--max-pagination-depth=")) {
+      options.maxPaginationDepth = toPositiveInteger(current.split("=").slice(1).join("="), DEFAULT_MAX_PAGINATION_DEPTH);
       continue;
     }
 
@@ -160,6 +211,8 @@ async function discoverProductUrls(options, existingUrls) {
     return {
       source: "sitemap",
       sitemapFilesProcessed: sitemapDiscovery.sitemapFilesProcessed,
+      categoryPagesProcessed: 0,
+      paginationPagesProcessed: 0,
       productUrlsFound: sitemapDiscovery.productUrlsFound,
       urls: sitemapDiscovery.urls,
     };
@@ -170,7 +223,9 @@ async function discoverProductUrls(options, existingUrls) {
 
   return {
     source: "structured-fallback",
-    sitemapFilesProcessed: sitemapDiscovery.sitemapFilesProcessed + fallbackDiscovery.sourceFilesProcessed,
+    sitemapFilesProcessed: sitemapDiscovery.sitemapFilesProcessed,
+    categoryPagesProcessed: fallbackDiscovery.categoryPagesProcessed,
+    paginationPagesProcessed: fallbackDiscovery.paginationPagesProcessed,
     productUrlsFound: sitemapDiscovery.productUrlsFound + fallbackDiscovery.productUrlsFound,
     urls: fallbackDiscovery.urls,
   };
@@ -270,26 +325,31 @@ function isUrlSetXml(xml) {
 
 async function discoverFromStructuredFallback(options, existingUrls) {
   const discovered = new Set();
-  let sourceFilesProcessed = 0;
   let productUrlsFound = 0;
+  let categoryPagesProcessed = 0;
+  let paginationPagesProcessed = 0;
 
-  const sourcePages = await loadStructuredSourcePages(options);
+  const categoryQueue = await loadInitialCategoryQueue(options);
+  const seenCategories = new Set(categoryQueue.map((entry) => entry.url));
 
-  for (const sourceUrl of sourcePages) {
+  while (categoryQueue.length > 0) {
     if (discovered.size >= options.maxProductUrls) {
       break;
     }
 
-    sourceFilesProcessed += 1;
-    console.log(`Scanning structured source: ${sourceUrl}`);
+    if (categoryPagesProcessed >= options.maxCategoryPages) {
+      break;
+    }
+
+    const category = categoryQueue.shift();
+    categoryPagesProcessed += 1;
+    console.log(`Scanning category: ${category.url}`);
 
     try {
-      const html = await fetchText(sourceUrl, options.delayMs);
-      const urls = extractProductUrlsFromHtml(html)
-        .map((url) => normalizeUrl(url))
-        .filter((url) => isRealProductUrl(url));
+      const crawlResult = await crawlCategoryPages(category.url, options);
+      paginationPagesProcessed += crawlResult.pagesProcessed;
 
-      for (const url of urls) {
+      for (const url of crawlResult.productUrls) {
         productUrlsFound += 1;
 
         if (discovered.size >= options.maxProductUrls) {
@@ -303,57 +363,191 @@ async function discoverFromStructuredFallback(options, existingUrls) {
         discovered.add(url);
         existingUrls.add(url);
       }
+
+      for (const linkedCategoryUrl of crawlResult.linkedCategoryUrls) {
+        if (seenCategories.has(linkedCategoryUrl)) {
+          continue;
+        }
+
+        if (seenCategories.size >= options.maxCategoryPages * 4) {
+          break;
+        }
+
+        seenCategories.add(linkedCategoryUrl);
+        categoryQueue.push({ url: linkedCategoryUrl, score: scoreCategory(linkedCategoryUrl, "") });
+      }
+
+      categoryQueue.sort((a, b) => b.score - a.score);
     } catch (error) {
-      console.log(`  Skipped structured source because it could not be read: ${error.message}`);
+      console.log(`  Skipped category because it could not be read: ${error.message}`);
     }
   }
 
   return {
-    sourceFilesProcessed,
+    categoryPagesProcessed,
+    paginationPagesProcessed,
     productUrlsFound,
     urls: Array.from(discovered),
   };
 }
 
-async function loadStructuredSourcePages(options) {
-  const pages = new Set();
-  const homepageUrl = "https://www.jimms.fi/fi";
-
-  pages.add(homepageUrl);
+async function loadInitialCategoryQueue(options) {
+  const byUrl = new Map();
 
   try {
-    const html = await fetchText(homepageUrl, options.delayMs);
-    const categoryUrls = extractStructuredCategoryUrls(html)
-      .map((url) => normalizeAbsoluteUrl(url))
-      .filter(Boolean);
+    const html = await fetchText(HOMEPAGE_URL, options.delayMs);
+    const menuCategories = extractMenuCategoryCandidates(html);
 
-    for (const url of categoryUrls) {
-      if (pages.size >= options.maxSitemapFiles) {
-        break;
+    for (const category of menuCategories) {
+      const normalized = normalizeCategoryUrl(category.url);
+      if (!normalized) {
+        continue;
       }
 
-      pages.add(url);
+      const score = scoreCategory(normalized, category.label || "");
+      const existing = byUrl.get(normalized);
+      if (!existing || score > existing.score) {
+        byUrl.set(normalized, { url: normalized, score });
+      }
     }
   } catch (error) {
-    // Use static fallback pages when homepage cannot be fetched.
+    console.log(`Homepage menu discovery failed, using static category sources: ${error.message}`);
   }
 
   for (const fallbackUrl of FALLBACK_STRUCTURED_SOURCES) {
-    if (pages.size >= options.maxSitemapFiles) {
-      break;
+    const normalized = normalizeCategoryUrl(fallbackUrl);
+    if (!normalized) {
+      continue;
     }
 
-    const normalized = normalizeAbsoluteUrl(fallbackUrl);
-    if (normalized) {
-      pages.add(normalized);
+    if (!byUrl.has(normalized)) {
+      byUrl.set(normalized, { url: normalized, score: scoreCategory(normalized, "") });
     }
   }
 
-  return Array.from(pages).slice(0, options.maxSitemapFiles);
+  return Array.from(byUrl.values())
+    .sort((a, b) => b.score - a.score)
+    .slice(0, options.maxCategoryPages * 2);
 }
 
-function extractStructuredCategoryUrls(html) {
-  const urls = new Set();
+function extractMenuCategoryCandidates(html) {
+  const results = [];
+
+  const anchorPattern = /<a[^>]+href\s*=\s*["']([^"']+)["'][^>]*>([\s\S]*?)<\/a>/gi;
+  let anchorMatch;
+
+  while ((anchorMatch = anchorPattern.exec(html)) !== null) {
+    const href = decodeHtmlEntities((anchorMatch[1] || "").trim());
+    if (!/\/fi\/Product\/List\//i.test(href)) {
+      continue;
+    }
+
+    const label = cleanHtmlText(anchorMatch[2] || "");
+    results.push({ url: href, label });
+  }
+
+  const jsonPattern = /"(?:url|href)"\s*:\s*"(\/fi\/Product\/List\/[^"\\]+)"(?:[^{}]{0,180}?"(?:name|title|label)"\s*:\s*"([^"\\]*)")?/gi;
+  let jsonMatch;
+
+  while ((jsonMatch = jsonPattern.exec(html)) !== null) {
+    const href = decodeJsonLikeString(jsonMatch[1] || "");
+    const label = decodeJsonLikeString(jsonMatch[2] || "");
+    results.push({ url: href, label });
+  }
+
+  return results;
+}
+
+function scoreCategory(url, label) {
+  const text = `${String(url || "")} ${String(label || "")}`.toLowerCase();
+  let score = 0;
+
+  for (const keyword of PRIORITY_CATEGORY_KEYWORDS) {
+    if (text.includes(keyword.toLowerCase())) {
+      score += 10;
+    }
+  }
+
+  // Prefer main category list pages over heavily filtered links.
+  if (!text.includes("?fq=")) {
+    score += 3;
+  }
+
+  if (text.includes("/fi/product/list/")) {
+    score += 2;
+  }
+
+  return score;
+}
+
+async function crawlCategoryPages(categoryUrl, options) {
+  const visitedPages = new Set();
+  const queue = [{ url: categoryUrl, depth: 1 }];
+  const productUrls = new Set();
+  const linkedCategoryUrls = new Set();
+  let pagesProcessed = 0;
+
+  while (queue.length > 0) {
+    const current = queue.shift();
+    if (!current || !current.url) {
+      continue;
+    }
+
+    if (current.depth > options.maxPaginationDepth) {
+      continue;
+    }
+
+    if (visitedPages.has(current.url)) {
+      continue;
+    }
+
+    visitedPages.add(current.url);
+    pagesProcessed += 1;
+
+    const html = await fetchText(current.url, options.delayMs);
+
+    const pageProducts = extractProductUrlsFromHtml(html)
+      .map((url) => normalizeUrl(url))
+      .filter((url) => isRealProductUrl(url));
+
+    for (const url of pageProducts) {
+      productUrls.add(url);
+    }
+
+    const categoryLinks = extractCategoryLinksFromHtml(html)
+      .map((url) => normalizeCategoryUrl(url))
+      .filter(Boolean);
+
+    for (const linkedCategoryUrl of categoryLinks) {
+      linkedCategoryUrls.add(linkedCategoryUrl);
+    }
+
+    if (current.depth >= options.maxPaginationDepth) {
+      continue;
+    }
+
+    const paginationUrls = extractPaginationUrls(html, current.url);
+    const fallbackPagination = buildFallbackPaginationCandidates(current.url, current.depth + 1);
+    const nextPages = [...paginationUrls, ...fallbackPagination]
+      .map((url) => normalizeCategoryUrl(url))
+      .filter(Boolean);
+
+    for (const nextUrl of nextPages) {
+      if (!visitedPages.has(nextUrl)) {
+        queue.push({ url: nextUrl, depth: current.depth + 1 });
+      }
+    }
+  }
+
+  return {
+    pagesProcessed,
+    productUrls: Array.from(productUrls),
+    linkedCategoryUrls: Array.from(linkedCategoryUrls),
+  };
+}
+
+function extractCategoryLinksFromHtml(html) {
+  const categoryUrls = new Set();
   const hrefPattern = /href\s*=\s*["']([^"']+)["']/gi;
   let match;
 
@@ -363,12 +557,89 @@ function extractStructuredCategoryUrls(html) {
       continue;
     }
 
-    if (/\/fi\/Product\/List\//i.test(href) || /\/fi\/ShopInShop\//i.test(href)) {
-      urls.add(href);
+    if (/\/fi\/Product\/List\//i.test(href)) {
+      categoryUrls.add(href);
     }
   }
 
-  return Array.from(urls);
+  return Array.from(categoryUrls);
+}
+
+function extractPaginationUrls(html, currentCategoryUrl) {
+  const paginationUrls = new Set();
+  const hrefPattern = /href\s*=\s*["']([^"']+)["']/gi;
+  const current = normalizeCategoryUrl(currentCategoryUrl);
+
+  if (!current) {
+    return [];
+  }
+
+  const currentBaseKey = getCategoryBaseKey(current);
+  let match;
+
+  while ((match = hrefPattern.exec(html)) !== null) {
+    const href = decodeHtmlEntities((match[1] || "").trim());
+    const normalized = normalizeCategoryUrl(href);
+    if (!normalized) {
+      continue;
+    }
+
+    if (getCategoryBaseKey(normalized) !== currentBaseKey) {
+      continue;
+    }
+
+    if (looksLikePaginationUrl(normalized)) {
+      paginationUrls.add(normalized);
+    }
+  }
+
+  return Array.from(paginationUrls);
+}
+
+function buildFallbackPaginationCandidates(categoryUrl, pageNumber) {
+  const base = normalizeCategoryUrl(categoryUrl);
+  if (!base) {
+    return [];
+  }
+
+  const urls = [];
+
+  try {
+    const pageUrl = new URL(base);
+    pageUrl.searchParams.set("page", String(pageNumber));
+    urls.push(pageUrl.toString());
+
+    const pUrl = new URL(base);
+    pUrl.searchParams.set("p", String(pageNumber));
+    urls.push(pUrl.toString());
+  } catch (error) {
+    return [];
+  }
+
+  return urls;
+}
+
+function looksLikePaginationUrl(url) {
+  try {
+    const parsed = new URL(url);
+    return parsed.searchParams.has("page") || parsed.searchParams.has("p") || parsed.searchParams.has("Page");
+  } catch (error) {
+    return false;
+  }
+}
+
+function getCategoryBaseKey(url) {
+  try {
+    const parsed = new URL(url);
+    const parts = parsed.pathname.split("/").filter(Boolean);
+    if (parts.length < 4) {
+      return parsed.pathname.toLowerCase();
+    }
+
+    return `/${parts[0].toLowerCase()}/${parts[1].toLowerCase()}/${parts[2].toLowerCase()}/${parts[3].toLowerCase()}`;
+  } catch (error) {
+    return String(url || "").toLowerCase();
+  }
 }
 
 function extractProductUrlsFromHtml(html) {
@@ -454,6 +725,28 @@ function decodeHtmlEntities(value) {
     .replace(/&#39;/g, "'");
 }
 
+function decodeJsonLikeString(value) {
+  const raw = String(value || "");
+  if (!raw) {
+    return "";
+  }
+
+  try {
+    return JSON.parse(`"${raw.replace(/"/g, '\\"')}"`);
+  } catch (error) {
+    return raw
+      .replace(/\\\//g, "/")
+      .replace(/\\u0026/g, "&");
+  }
+}
+
+function cleanHtmlText(value) {
+  return decodeHtmlEntities(String(value || ""))
+    .replace(/<[^>]+>/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
 function normalizeAbsoluteUrl(value) {
   if (!value) {
     return null;
@@ -494,6 +787,39 @@ function normalizeUrl(value) {
     const normalizedPath = ["fi", "Product", "Show", productId, ...tail].join("/");
 
     return `https://www.jimms.fi/${normalizedPath}`;
+  } catch (error) {
+    return null;
+  }
+}
+
+function normalizeCategoryUrl(value) {
+  if (!value) {
+    return null;
+  }
+
+  try {
+    const parsed = new URL(value, "https://www.jimms.fi");
+    const hostname = parsed.hostname.toLowerCase().replace(/^www\./, "");
+    if (hostname !== STORE) {
+      return null;
+    }
+
+    const pathParts = parsed.pathname.split("/").filter(Boolean);
+    if (pathParts.length < 4) {
+      return null;
+    }
+
+    if (pathParts[0].toLowerCase() !== "fi") {
+      return null;
+    }
+
+    if (pathParts[1].toLowerCase() !== "product" || pathParts[2].toLowerCase() !== "list") {
+      return null;
+    }
+
+    parsed.pathname = `/fi/Product/List/${pathParts.slice(3).join("/")}`;
+    parsed.hash = "";
+    return parsed.toString();
   } catch (error) {
     return null;
   }
