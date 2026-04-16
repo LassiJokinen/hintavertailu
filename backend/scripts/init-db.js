@@ -32,6 +32,11 @@ async function initDatabase() {
       ean TEXT,
       mpn TEXT,
       in_stock INTEGER,
+      is_active INTEGER DEFAULT 1,
+      retry_count INTEGER DEFAULT 0,
+      last_error TEXT,
+      last_error_at TEXT,
+      last_status_code INTEGER,
       fetched_at TEXT DEFAULT CURRENT_TIMESTAMP,
       FOREIGN KEY (product_id) REFERENCES products(id)
     );

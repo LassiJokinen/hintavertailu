@@ -4,6 +4,7 @@ const {
   normalizeIdentifier,
   normalizeText,
 } = require("./normalizer");
+const { roundMoney } = require("./money");
 
 const STOP_WORDS = new Set([
   "wireless",
@@ -100,7 +101,7 @@ function findMatches(query, offers) {
     .filter((offer) => !query.currency || !offer.currency || offer.currency === query.currency)
     .map((offer) => {
       const { score, reason } = scoreMatch(query, offer);
-      const total = Number(offer.price || 0) + Number(offer.shipping || 0);
+      const total = roundMoney(Number(offer.price || 0) + Number(offer.shipping || 0));
 
       return {
         ...offer,
