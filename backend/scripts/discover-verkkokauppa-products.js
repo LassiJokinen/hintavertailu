@@ -25,6 +25,7 @@ async function main() {
     const discovery = await discoverProductUrls(options, existingUrls);
 
     const summary = {
+      discoverySource: "sitemap",
       sitemapFilesProcessed: discovery.sitemapFilesProcessed,
       productUrlsFound: discovery.productUrlsFound,
       newUrlsSaved: 0,

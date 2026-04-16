@@ -22,25 +22,26 @@ async function main() {
     const discovery = await discoverProductUrls(options, existingUrls);
 
     const summary = {
+      discoverySource: "sitemap",
       sitemapFilesProcessed: discovery.sitemapFilesProcessed,
       productUrlsFound: discovery.productUrlsFound,
-      savedUrls: 0,
-      scraped: 0,
+      newUrlsSaved: 0,
+      productsScraped: 0,
       offersInserted: 0,
       offersUpdated: 0,
       linkedOffers: 0,
-      failed: 0,
+      failures: 0,
     };
 
     for (const url of discovery.urls) {
       try {
         const saved = await saveDiscoveredUrl(url);
         if (saved) {
-          summary.savedUrls += 1;
+          summary.newUrlsSaved += 1;
         }
 
         const product = await scrapeGiganttiProduct(url);
-        summary.scraped += 1;
+        summary.productsScraped += 1;
 
         await upsertRawStoreProduct(product);
         const offerResult = await upsertOffer(product);
@@ -55,7 +56,7 @@ async function main() {
           summary.linkedOffers += 1;
         }
       } catch (error) {
-        summary.failed += 1;
+        summary.failures += 1;
         console.log(`Failed for ${url}`);
         console.log(`  ${error.message}`);
       }
