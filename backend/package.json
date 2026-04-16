@@ -8,6 +8,8 @@
     "init-db": "node scripts/init-db.js",
     "refresh:gigantti": "node scripts/run-refresh.js",
     "discover:gigantti": "node scripts/discover-gigantti-products.js",
+    "discover:jimms": "node scripts/discover-jimms-products.js",
+    "discover:power": "node scripts/discover-power-products.js",
     "discover:verkkokauppa": "node scripts/discover-verkkokauppa-products.js",
     "import:offers": "node scripts/import-offers-json.js",
     "refresh:all-known": "node scripts/refresh-all-known-products.js",
