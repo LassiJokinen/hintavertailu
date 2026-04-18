@@ -46,6 +46,15 @@ function normalizeInputPrice(value) {
   return Number.isNaN(parsed) ? null : parsed;
 }
 
+function normalizeEanForLookup(value) {
+  const normalized = normalizeInputString(value);
+  if (!normalized) {
+    return "";
+  }
+
+  return normalized.replace(/\D/g, "").replace(/^0+/, "");
+}
+
 app.get("/", (req, res) => {
   res.json({ ok: true, message: "Price compare backend is running" });
 });
@@ -84,9 +93,18 @@ app.post("/compare", async (req, res) => {
     let matches = [];
 
     if (canonicalProduct) {
-      const linkedOffers = await loadLinkedOffersFromDb(canonicalProduct.id);
+      const linkedOffers = await loadLinkedOffersFromDb(canonicalProduct);
+      console.log(
+        "CANONICAL CANDIDATE OFFERS:",
+        linkedOffers.map((offer) => ({
+          store: offer.store,
+          title: offer.title,
+          ean: offer.ean,
+          product_id: offer.product_id,
+        }))
+      );
 
-      matches = linkedOffers
+      const scoredOffers = linkedOffers
         .filter((offer) => !query.store || offer.store !== query.store)
         .filter(
           (offer) =>
@@ -100,9 +118,33 @@ app.post("/compare", async (req, res) => {
             matchScore: score,
             matchReason: reason,
           };
-        })
+        });
+
+      console.log(
+        "CANONICAL SCORED OFFERS:",
+        scoredOffers.map((offer) => ({
+          store: offer.store,
+          title: offer.title,
+          ean: offer.ean,
+          matchScore: offer.matchScore,
+          matchReason: offer.matchReason,
+        }))
+      );
+
+      matches = scoredOffers
         .filter((offer) => offer.matchScore >= 60)
         .sort((a, b) => b.matchScore - a.matchScore || a.total - b.total);
+
+      console.log(
+        "CANONICAL FINAL OFFERS:",
+        matches.map((offer) => ({
+          store: offer.store,
+          title: offer.title,
+          ean: offer.ean,
+          matchScore: offer.matchScore,
+          matchReason: offer.matchReason,
+        }))
+      );
     } else {
       const offers = await loadOffersFromDb();
       matches = findMatches(query, offers);
@@ -153,9 +195,13 @@ async function findBestCanonicalProduct(query) {
   return bestMatch ? bestMatch.product : null;
 }
 
-async function loadLinkedOffersFromDb(productId) {
+async function loadLinkedOffersFromDb(canonicalProduct) {
+  const normalizedCanonicalEan = normalizeEanForLookup(canonicalProduct.ean);
+
   const rows = await all(
     `SELECT
+      id,
+      product_id,
       store,
       title,
       price,
@@ -169,8 +215,12 @@ async function loadLinkedOffersFromDb(productId) {
       ean,
       mpn
      FROM offers
-     WHERE product_id = ?`,
-    [productId]
+     WHERE product_id = ?
+        OR (
+          ? <> ''
+          AND LTRIM(REPLACE(IFNULL(ean, ''), ' ', ''), '0') = ?
+        )`,
+    [canonicalProduct.id, normalizedCanonicalEan, normalizedCanonicalEan]
   );
 
   return rows.map((row) => ({
