@@ -153,6 +153,21 @@ h1 {
   padding: 8px;
   border-radius: 10px;
   cursor: pointer;
+  transition: transform 0.14s ease;
+}
+
+.featured-offer.clickable-offer:hover {
+  background: #22c55e !important;
+  border-color: transparent !important;
+  box-shadow: none !important;
+}
+
+.featured-offer:hover {
+  transform: translateY(-2px);
+}
+
+.featured-offer:active {
+  transform: scale(0.98);
 }
 
 .featured-text {
@@ -160,6 +175,7 @@ h1 {
   font-size: 12px;
   font-weight: 700;
   margin-bottom: 4px;
+  text-align: center;
 }
 
 .featured-inner {
@@ -169,19 +185,14 @@ h1 {
   display: flex;
   align-items: center;
   gap: 10px;
-  transition: background 0.14s ease, transform 0.14s ease, box-shadow 0.14s ease;
+  transition: background 0.14s ease, box-shadow 0.14s ease;
 }
 
 .featured-offer:hover .featured-inner {
   background-color: #f3f4f6;
-  transform: translateY(-2px);
   box-shadow:
     0 4px 12px rgba(0, 0, 0, 0.10),
     0 0 0 2px rgba(34, 197, 94, 0.18);
-}
-
-.featured-offer:active .featured-inner {
-  transform: scale(0.98);
 }
 
 .featured-content {
@@ -210,13 +221,6 @@ h1 {
 .featured-price {
   font-size: 13px;
   font-weight: bold;
-  color: #16a34a;
+  color: #111827;
   margin-top: 2px;
-}
-
-.featured-offer.clickable-offer:hover {
-  background: #22c55e !important;
-  border-color: transparent !important;
-  box-shadow: none !important;
-  transform: none !important;
 }

@@ -43,7 +43,7 @@ function renderResults(data) {
 
   status.innerHTML = `
     <span class="deal-icon">$</span>
-    Löytyi ${matches.length} vastaavaa tarjousta
+    Löytyi ${matches.length} vastaavaa tarjousta!
   `;
 
   const cheapest = matches.reduce((min, offer) =>
@@ -64,7 +64,7 @@ function renderResults(data) {
 
     html += `
       <div class="featured-offer clickable-offer" data-index="${cheapestIndex}">
-        <div class="featured-text">Halvin tuote löydetty</div>
+        <div class="featured-text">Halvin tuote löydetty!</div>
 
         <div class="featured-inner">
           <div class="featured-content">
