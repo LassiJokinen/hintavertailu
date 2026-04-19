@@ -364,3 +364,4 @@ function buildUnsupportedPageResult(storeOrHostname) {
     store: storeOrHostname || normalizeHostname(window.location.hostname)
   };
 }
+

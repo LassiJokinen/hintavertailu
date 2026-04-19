@@ -32,6 +32,7 @@ function renderResults(data) {
   const results = document.getElementById("results");
 
   const matches = data.matches || [];
+  const currentPrice = data.queryProduct?.price;
 
   if (matches.length === 0) {
     status.textContent = "Vastaavia tarjouksia ei löytynyt";
@@ -45,9 +46,48 @@ function renderResults(data) {
     Löytyi ${matches.length} vastaavaa tarjousta
   `;
 
+  const cheapest = matches.reduce((min, offer) =>
+    offer.total < min.total ? offer : min
+  , matches[0]);
+
+  const isCurrentCheapest =
+    typeof currentPrice === "number" &&
+    currentPrice <= cheapest.total;
+
   let html = "";
 
+  if (!isCurrentCheapest) {
+    const logoUrl =
+      `https://www.google.com/s2/favicons?domain=${cheapest.store}&sz=64`;
+
+    const cheapestIndex = matches.indexOf(cheapest);
+
+    html += `
+      <div class="featured-offer clickable-offer" data-index="${cheapestIndex}">
+        <div class="featured-text">Halvin tuote löydetty</div>
+
+        <div class="featured-inner">
+          <div class="featured-content">
+            <img class="store-logo" src="${logoUrl}" alt="${cheapest.store}">
+
+            <div class="featured-center">
+              <div class="featured-title">${cheapest.title}</div>
+              <div class="featured-store">${cheapest.store}</div>
+              <div class="featured-price">${cheapest.price} ${cheapest.currency}</div>
+            </div>
+
+            <button class="visit-btn" data-index="${cheapestIndex}">
+              ↗
+            </button>
+          </div>
+        </div>
+      </div>
+    `;
+  }
+
   matches.forEach((match, index) => {
+    if (!isCurrentCheapest && match === cheapest) return;
+
     const logoUrl =
       `https://www.google.com/s2/favicons?domain=${match.store}&sz=64`;
 
@@ -88,18 +128,15 @@ function renderResults(data) {
   document.querySelectorAll(".clickable-offer").forEach((card) => {
     card.addEventListener("click", () => {
       const index = Number(card.dataset.index);
-      const match = matches[index];
-      openOffer(match);
+      openOffer(matches[index]);
     });
   });
 
   document.querySelectorAll(".visit-btn").forEach((button) => {
     button.addEventListener("click", (event) => {
       event.stopPropagation();
-
       const index = Number(button.dataset.index);
-      const match = matches[index];
-      openOffer(match);
+      openOffer(matches[index]);
     });
   });
 }

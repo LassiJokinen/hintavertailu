@@ -146,8 +146,77 @@ h1 {
   color: white;
   font-size: 18px;
   font-weight: 700;
-  line-height: 1;
-  vertical-align: middle;
-  position: relative;
-  top: -1px;
+}
+
+.featured-offer {
+  background: #22c55e;
+  padding: 8px;
+  border-radius: 10px;
+  cursor: pointer;
+}
+
+.featured-text {
+  color: white;
+  font-size: 12px;
+  font-weight: 700;
+  margin-bottom: 4px;
+}
+
+.featured-inner {
+  background: white;
+  border-radius: 8px;
+  padding: 10px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  transition: background 0.14s ease, transform 0.14s ease, box-shadow 0.14s ease;
+}
+
+.featured-offer:hover .featured-inner {
+  background-color: #f3f4f6;
+  transform: translateY(-2px);
+  box-shadow:
+    0 4px 12px rgba(0, 0, 0, 0.10),
+    0 0 0 2px rgba(34, 197, 94, 0.18);
+}
+
+.featured-offer:active .featured-inner {
+  transform: scale(0.98);
+}
+
+.featured-content {
+  display: flex;
+  align-items: center;
+  width: 100%;
+  gap: 10px;
+}
+
+.featured-center {
+  flex: 1;
+  min-width: 0;
+}
+
+.featured-title {
+  font-size: 13px;
+  font-weight: bold;
+  color: #111827;
+}
+
+.featured-store {
+  font-size: 11px;
+  color: #6b7280;
+}
+
+.featured-price {
+  font-size: 13px;
+  font-weight: bold;
+  color: #16a34a;
+  margin-top: 2px;
+}
+
+.featured-offer.clickable-offer:hover {
+  background: #22c55e !important;
+  border-color: transparent !important;
+  box-shadow: none !important;
+  transform: none !important;
 }
