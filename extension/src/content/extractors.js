@@ -186,7 +186,7 @@ function parsePrice(text) {
   if (!text) return null;
 
   const clean = text.toString().replace(/\s+/g, " ").trim();
-  const numberMatch = clean.match(/\d{1,3}(?:[\.\s]\d{3})*(?:[\.,]\d{1,2})?|\d+(?:[\.,]\d{1,2})?/);
+  const numberMatch = clean.match(/(?:\d{1,3}(?:[\.,\s]\d{3})+|\d+)(?:[\.,]\d{1,2})?/);
   if (!numberMatch) return null;
 
   const rawNumber = numberMatch[0].replace(/\s/g, "");
@@ -204,22 +204,41 @@ function parsePrice(text) {
 }
 
 function normalizePriceNumber(value) {
-  const hasComma = value.includes(",");
-  const hasDot = value.includes(".");
+  const compact = value.replace(/\s/g, "");
+  const hasComma = compact.includes(",");
+  const hasDot = compact.includes(".");
+
+  if (!hasComma && !hasDot) {
+    return compact;
+  }
 
   if (hasComma && hasDot) {
-    const decimalSeparator = value.lastIndexOf(",") > value.lastIndexOf(".") ? "," : ".";
+    const decimalSeparator = compact.lastIndexOf(",") > compact.lastIndexOf(".") ? "," : ".";
     const thousandsSeparator = decimalSeparator === "," ? "." : ",";
-    return value
+
+    return compact
       .split(thousandsSeparator).join("")
       .replace(decimalSeparator, ".");
   }
 
-  if (hasComma) {
-    return value.replace(",", ".");
+  const separator = hasComma ? "," : ".";
+  const parts = compact.split(separator);
+
+  if (parts.length > 2) {
+    return parts.join("");
   }
 
-  return value;
+  if (parts.length === 2) {
+    const fractionLength = parts[1].length;
+
+    if (fractionLength === 3 || fractionLength === 0) {
+      return parts.join("");
+    }
+
+    return `${parts[0]}.${parts[1]}`;
+  }
+
+  return compact;
 }
 
 function detectCurrency(text) {

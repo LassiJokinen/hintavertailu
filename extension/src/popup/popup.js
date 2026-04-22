@@ -2,6 +2,21 @@ document.addEventListener("DOMContentLoaded", () => {
   startComparison();
 });
 
+function formatPrice(value, currency) {
+  const numericValue = Number(value);
+
+  if (!Number.isFinite(numericValue)) {
+    return `${value ?? "-"} ${currency || "EUR"}`;
+  }
+
+  const formatted = new Intl.NumberFormat("fi-FI", {
+    minimumFractionDigits: 0,
+    maximumFractionDigits: 2,
+  }).format(numericValue);
+
+  return `${formatted} ${currency || "EUR"}`;
+}
+
 function startComparison() {
   const status = document.getElementById("status");
   const results = document.getElementById("results");
@@ -73,7 +88,7 @@ function renderResults(data) {
             <div class="featured-center">
               <div class="featured-title">${cheapest.title}</div>
               <div class="featured-store">${cheapest.store}</div>
-              <div class="featured-price">${cheapest.price} ${cheapest.currency}</div>
+              <div class="featured-price">${formatPrice(cheapest.price, cheapest.currency)}</div>
             </div>
 
             <button class="visit-btn" data-index="${cheapestIndex}">
@@ -101,7 +116,7 @@ function renderResults(data) {
           <div class="result-center">
             <div class="product-title">${match.title}</div>
             <div class="store-name">${match.store}</div>
-            <div class="price">${match.price} ${match.currency}</div>
+            <div class="price">${formatPrice(match.price, match.currency)}</div>
           </div>
 
           <div class="result-right">

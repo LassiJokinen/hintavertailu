@@ -14,6 +14,8 @@
     "discover:verkkokauppa": "node scripts/discover-verkkokauppa-products.js",
     "import:offers": "node scripts/import-offers-json.js",
     "refresh:all-known": "node scripts/refresh-all-known-products.js",
+    "refresh:suspicious": "node scripts/refresh-suspicious-offers.js",
+    "refresh:query": "node scripts/refresh-offers-by-query.js",
     "link:offers": "node scripts/link-offers-to-products.js",
     "offers:list-failed": "node scripts/list-failed-offers.js",
     "offers:mark-stale": "node scripts/mark-stale-offers.js"
