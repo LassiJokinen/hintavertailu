@@ -27,7 +27,7 @@ function normalizeInputString(value) {
 function normalizeInputSku(value) {
   const normalized = normalizeInputString(value);
 
-  // Ignore store-local numeric product IDs like "797281"
+  
   if (/^\d+$/.test(normalized)) {
     return "";
   }
