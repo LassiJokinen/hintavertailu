@@ -62,6 +62,19 @@ function normalizeInputPrice(value) {
   return Number.isNaN(parsed) ? null : parsed;
 }
 
+function normalizeStore(store, url) {
+  if (store) {
+    return String(store).toLowerCase().replace(/^www\./, "");
+  }
+
+  try {
+    const parsed = new URL(url);
+    return parsed.hostname.toLowerCase().replace(/^www\./, "");
+  } catch (error) {
+    return "";
+  }
+}
+
 function normalizeEanForLookup(value) {
   const normalized = normalizeInputString(value);
   if (!normalized) {
