@@ -10,14 +10,17 @@ const { scrapeGiganttiProduct } = require("./scrapers/gigantti");
 const { scrapeVerkkokauppaProduct } = require("./scrapers/verkkokauppa");
 const { scrapePowerProduct } = require("./scrapers/power");
 const { scrapeJimmsProduct } = require("./scrapers/jimms");
+const { searchLiveOffers } = require("./live-search");
 const { ensureOfferMaintenanceColumns, extractStatusCode } = require("./offer-maintenance");
 const { calculateTotal, roundMoney } = require("./money");
 const { linkOfferToCanonicalProduct } = require("./offer-linking");
 
 const app = express();
-const PORT = 3000;
+const PORT = Number.parseInt(process.env.PORT || "3000", 10);
 const MAX_BACKGROUND_REFRESHES = 3;
 const OFFER_REFRESH_WINDOW_MS = 12 * 60 * 60 * 1000;
+const LIVE_MATCH_THRESHOLD = 60;
+const MAX_LIVE_CANDIDATES_PER_STORE = 3;
 
 const SCRAPERS = {
   "gigantti.fi": scrapeGiganttiProduct,
@@ -101,6 +104,7 @@ app.post("/compare", async (req, res) => {
     sku = "",
     ean = "",
     mpn = "",
+    url = "",
   } = req.body || {};
 
   try {
@@ -114,7 +118,10 @@ app.post("/compare", async (req, res) => {
       sku: normalizeInputSku(sku),
       ean: normalizeInputString(ean),
       mpn: normalizeInputString(mpn),
+      url: normalizeInputString(url),
     };
+
+    await enrichQueryFromCurrentPage(query);
 
     const canonicalProduct = await findBestCanonicalProduct(query);
     console.log("CANONICAL PRODUCT:", canonicalProduct);
@@ -180,6 +187,12 @@ app.post("/compare", async (req, res) => {
       console.log("FALLBACK MATCHES:", matches.length, matches);
     }
 
+    const liveSearch = await searchLiveOffers(query, SCRAPERS, {
+      candidatesPerStore: MAX_LIVE_CANDIDATES_PER_STORE,
+    });
+    const liveMatches = scoreAndFilterLiveOffers(query, liveSearch.offers);
+    matches = mergeMatches(matches, liveMatches);
+
     res.json({
       queryProduct: {
         title: query.title,
@@ -199,7 +212,12 @@ app.post("/compare", async (req, res) => {
         fetchedAt: match.fetched_at,
         matchScore: match.matchScore,
         matchReason: match.matchReason,
+        source: match.source || "database",
       })),
+      liveSearch: {
+        enabled: true,
+        diagnostics: liveSearch.diagnostics,
+      },
     });
   } catch (error) {
     console.error("/compare failed:", error);
@@ -244,6 +262,34 @@ app.post("/refresh-matches", async (req, res) => {
     });
   }
 });
+
+async function enrichQueryFromCurrentPage(query) {
+  if (!query.url) {
+    return;
+  }
+
+  const normalizedStore = normalizeStore(query.store, query.url);
+  const scraper = SCRAPERS[normalizedStore];
+
+  if (!scraper) {
+    return;
+  }
+
+  try {
+    const scraped = await scraper(query.url);
+    query.title = query.title || scraped.title || "";
+    query.price = query.price === null ? scraped.price : query.price;
+    query.currency = query.currency || scraped.currency || "EUR";
+    query.store = query.store || scraped.store || normalizedStore;
+    query.brand = query.brand || scraped.brand || "";
+    query.model = query.model || scraped.model || "";
+    query.sku = query.sku || scraped.sku || "";
+    query.ean = query.ean || scraped.ean || "";
+    query.mpn = query.mpn || scraped.mpn || "";
+  } catch (error) {
+    console.log(`Current page enrichment skipped for ${query.url}: ${error.message}`);
+  }
+}
 
 async function findBestCanonicalProduct(query) {
   const products = await all(
@@ -509,3 +555,67 @@ async function loadOffersFromDb() {
 app.listen(PORT, () => {
   console.log(`Server running on http://localhost:${PORT}`);
 });
+
+function scoreAndFilterLiveOffers(query, offers) {
+  return offers
+    .filter((offer) => !query.store || offer.store !== query.store)
+    .filter(
+      (offer) =>
+        !query.currency || !offer.currency || offer.currency === query.currency
+    )
+    .map((offer) => {
+      const { score, reason } = scoreMatch(query, offer);
+      return {
+        ...offer,
+        id: null,
+        fetched_at: new Date().toISOString(),
+        matchScore: score,
+        matchReason: reason,
+        source: "live-search",
+      };
+    })
+    .filter((offer) => offer.matchScore >= LIVE_MATCH_THRESHOLD)
+    .sort((a, b) => b.matchScore - a.matchScore || a.total - b.total);
+}
+
+function mergeMatches(databaseMatches, liveMatches) {
+  const byKey = new Map();
+
+  for (const match of [...databaseMatches, ...liveMatches]) {
+    const key = normalizeMatchKey(match);
+    const existing = byKey.get(key);
+
+    if (!existing) {
+      byKey.set(key, match);
+      continue;
+    }
+
+    const existingFetchedAt = Date.parse(existing.fetched_at || "");
+    const matchFetchedAt = Date.parse(match.fetched_at || "");
+    const matchIsNewer =
+      Number.isFinite(matchFetchedAt) &&
+      (!Number.isFinite(existingFetchedAt) || matchFetchedAt > existingFetchedAt);
+
+    if (match.source === "live-search" && matchIsNewer) {
+      byKey.set(key, match);
+    }
+  }
+
+  return Array.from(byKey.values())
+    .sort((a, b) => b.matchScore - a.matchScore || a.total - b.total);
+}
+
+function normalizeMatchKey(match) {
+  if (match.url) {
+    try {
+      const parsed = new URL(match.url);
+      parsed.hash = "";
+      parsed.search = "";
+      return `${match.store}:${parsed.toString()}`;
+    } catch (error) {
+      return `${match.store}:${match.url}`;
+    }
+  }
+
+  return `${match.store}:${match.title}:${match.price}`;
+}

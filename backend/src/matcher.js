@@ -11,6 +11,7 @@ function normalizeText(value) {
   return s
     .toLowerCase()
     .replace(/&/g, " and ")
+    .replace(/\b(\d+)\s+([a-z]+)\b/g, "$1$2")
     .replace(/[()#[\],;:/\\|]/g, " ")
     .replace(/[^a-z0-9åäö+\-. ]+/gi, " ")
     .replace(/\s+/g, " ")
@@ -49,15 +50,36 @@ function tokenizeTitle(title) {
   return new Set(
     normalizeText(title)
       .split(" ")
+      .map(t => t.replace(/^[^a-z0-9]+|[^a-z0-9]+$/gi, ""))
       .filter(t => t.length > 2)
-      .filter(t => !["with", "from", "for", "the", "and", "musta", "white", "black"].includes(t))
+      .filter(t => ![
+        "with",
+        "from",
+        "for",
+        "the",
+        "and",
+        "musta",
+        "punainen",
+        "valkoinen",
+        "harmaa",
+        "grafiitti",
+        "pinkki",
+        "white",
+        "black",
+        "red",
+        "grey",
+        "gray",
+      ].includes(t))
   );
 }
 
 function modelishTokens(title) {
   const text = normalizeText(title);
-  const matches = text.match(/\b[a-z]*\d+[a-z0-9.-]*\b/g) || [];
-  return new Set(matches.map(t => t.replace(/[^a-z0-9]/g, "")));
+  const numericMatches = text.match(/\b[a-z]*\d+[a-z0-9.-]*\b/g) || [];
+  const romanMatches = text.match(/\b(?:ii|iii|iv|v|vi|vii|viii|ix|x)\b/g) || [];
+  return new Set(
+    [...numericMatches, ...romanMatches].map(t => t.replace(/[^a-z0-9]/g, ""))
+  );
 }
 
 function overlapScore(aSet, bSet) {
@@ -80,6 +102,40 @@ function hasConflictingModelTokens(queryTitle, offerTitle) {
   return !shared;
 }
 
+function colorTokens(title) {
+  const colors = new Set([
+    "musta",
+    "punainen",
+    "valkoinen",
+    "harmaa",
+    "grafiitti",
+    "pinkki",
+    "black",
+    "red",
+    "white",
+    "grey",
+    "gray",
+    "graphite",
+    "pink",
+  ]);
+
+  return new Set(
+    normalizeText(title)
+      .split(" ")
+      .map(t => t.replace(/^[^a-z0-9]+|[^a-z0-9]+$/gi, ""))
+      .filter(t => colors.has(t))
+  );
+}
+
+function hasConflictingColorTokens(queryTitle, offerTitle) {
+  const a = colorTokens(queryTitle);
+  const b = colorTokens(offerTitle);
+
+  if (!a.size || !b.size) return false;
+
+  return ![...a].some(token => b.has(token));
+}
+
 function scoreMatch(query, offer) {
   const qBrand = normalizeBrand(query.brand);
   const oBrand = normalizeBrand(offer.brand);
@@ -97,15 +153,6 @@ function scoreMatch(query, offer) {
     return { score: -1, reason: "same store" };
   }
 
-  // Hard rejects
-  if (qBrand && oBrand && qBrand !== oBrand) {
-    return { score: -1, reason: "brand mismatch" };
-  }
-
-  if (hasConflictingModelTokens(query.title, offer.title)) {
-    return { score: -1, reason: "model token mismatch" };
-  }
-
   // High confidence identifiers
   if (qEan && oEan && qEan === oEan) {
     return { score: 100, reason: "EAN exact match" };
@@ -118,6 +165,27 @@ function scoreMatch(query, offer) {
   // SKU is weaker in your dataset, so keep it below EAN/MPN
   if (qBrand && oBrand && qSku && oSku && qSku === oSku) {
     return { score: 88, reason: "brand + SKU exact match" };
+  }
+
+  if (qEan && oEan && qEan !== oEan) {
+    return { score: -1, reason: "EAN mismatch" };
+  }
+
+  if (qBrand && oBrand && qMpn && oMpn && qMpn !== oMpn) {
+    return { score: -1, reason: "MPN mismatch" };
+  }
+
+  // Hard rejects after exact identifiers, because store titles can format model tokens differently.
+  if (qBrand && oBrand && qBrand !== oBrand) {
+    return { score: -1, reason: "brand mismatch" };
+  }
+
+  if (hasConflictingModelTokens(query.title, offer.title)) {
+    return { score: -1, reason: "model token mismatch" };
+  }
+
+  if (hasConflictingColorTokens(query.title, offer.title)) {
+    return { score: -1, reason: "color mismatch" };
   }
 
   // Title fallback only if brand matches or brand missing

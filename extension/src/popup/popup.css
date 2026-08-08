@@ -108,6 +108,19 @@ h1 {
   color: #666;
 }
 
+.source-badge {
+  display: inline-flex;
+  align-items: center;
+  margin-left: 4px;
+  padding: 1px 5px;
+  border-radius: 999px;
+  background: #dcfce7;
+  color: #166534;
+  font-size: 10px;
+  font-weight: 700;
+  vertical-align: middle;
+}
+
 .price {
   font-size: 13px;
   margin-top: 4px;

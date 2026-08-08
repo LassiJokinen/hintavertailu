@@ -48,6 +48,7 @@ function renderResults(data) {
 
   const matches = data.matches || [];
   const currentPrice = data.queryProduct?.price;
+  const liveSummary = summarizeLiveSearch(data.liveSearch, matches);
 
   if (matches.length === 0) {
     status.textContent = "Vastaavia tarjouksia ei löytynyt";
@@ -162,4 +163,159 @@ function showError(message) {
   status.innerHTML = `
     <span class="error">${message}</span>
   `;
+}
+
+function summarizeLiveSearch(liveSearch, matches) {
+  const diagnostics = Array.isArray(liveSearch?.diagnostics)
+    ? liveSearch.diagnostics
+    : [];
+
+  return {
+    checkedStores: diagnostics.filter((item) =>
+      Number(item.searchUrlsChecked || 0) + Number(item.sitemapUrlsChecked || 0) > 0
+    ).length,
+    candidatesFound: diagnostics.reduce(
+      (total, item) => total + Number(item.candidatesFound || 0),
+      0
+    ),
+    liveMatches: Array.isArray(matches)
+      ? matches.filter((match) => match.source === "live-search").length
+      : 0,
+  };
+}
+
+function buildEmptyMessage(liveSummary) {
+  if (liveSummary.checkedStores === 0) {
+    return "Edullisempia tarjouksia ei loytynyt.";
+  }
+
+  if (liveSummary.candidatesFound === 0) {
+    return "Live-haku oli kaynnissa, mutta tuotesivuja ei loytynyt tuolla hakusanalla.";
+  }
+
+  return "Live-haku loysi ehdokkaita, mutta ne eivat vastanneet tuotetta tarpeeksi varmasti.";
+}
+
+function renderSourceBadge(match) {
+  if (match.source !== "live-search") {
+    return "";
+  }
+
+  return ` <span class="source-badge">Live</span>`;
+}
+
+function renderResults(data) {
+  const status = document.getElementById("status");
+  const results = document.getElementById("results");
+
+  const matches = data.matches || [];
+  const currentPrice = data.queryProduct?.price;
+  const liveSummary = summarizeLiveSearch(data.liveSearch, matches);
+
+  if (matches.length === 0) {
+    status.textContent = liveSummary.checkedStores > 0
+      ? `Live-haku tarkisti ${liveSummary.checkedStores} kauppaa`
+      : "Vastaavia tarjouksia ei loytynyt";
+    results.innerHTML = `<div class="empty">${buildEmptyMessage(liveSummary)}</div>`;
+    return;
+  }
+
+  status.innerHTML = `
+    <span class="deal-icon">$</span>
+    Loytyi ${matches.length} vastaavaa tarjousta${liveSummary.liveMatches > 0 ? `, ${liveSummary.liveMatches} live-hausta` : ""}!
+  `;
+
+  const cheapest = matches.reduce((min, offer) =>
+    offer.total < min.total ? offer : min
+  , matches[0]);
+
+  const isCurrentCheapest =
+    typeof currentPrice === "number" &&
+    currentPrice <= cheapest.total;
+
+  let html = "";
+
+  if (!isCurrentCheapest) {
+    const logoUrl =
+      `https://www.google.com/s2/favicons?domain=${cheapest.store}&sz=64`;
+
+    const cheapestIndex = matches.indexOf(cheapest);
+
+    html += `
+      <div class="featured-offer clickable-offer" data-index="${cheapestIndex}">
+        <div class="featured-text">Halvin tuote loydetty!</div>
+
+        <div class="featured-inner">
+          <div class="featured-content">
+            <img class="store-logo" src="${logoUrl}" alt="${cheapest.store}">
+
+            <div class="featured-center">
+              <div class="featured-title">${cheapest.title}</div>
+              <div class="featured-store">${cheapest.store}${renderSourceBadge(cheapest)}</div>
+              <div class="featured-price">${formatPrice(cheapest.price, cheapest.currency)}</div>
+            </div>
+
+            <button class="visit-btn" data-index="${cheapestIndex}">
+              -&gt;
+            </button>
+          </div>
+        </div>
+      </div>
+    `;
+  }
+
+  matches.forEach((match, index) => {
+    if (!isCurrentCheapest && match === cheapest) return;
+
+    const logoUrl =
+      `https://www.google.com/s2/favicons?domain=${match.store}&sz=64`;
+
+    html += `
+      <div class="result-card clickable-offer" data-index="${index}">
+        <div class="offer-inner">
+          <div class="result-left">
+            <img class="store-logo" src="${logoUrl}" alt="${match.store}">
+          </div>
+
+          <div class="result-center">
+            <div class="product-title">${match.title}</div>
+            <div class="store-name">${match.store}${renderSourceBadge(match)}</div>
+            <div class="price">${formatPrice(match.price, match.currency)}</div>
+          </div>
+
+          <div class="result-right">
+            <button class="visit-btn" data-index="${index}">
+              -&gt;
+            </button>
+          </div>
+        </div>
+      </div>
+    `;
+  });
+
+  results.innerHTML = html;
+
+  function openOffer(match) {
+    if (!match.url) {
+      showError("Tuotteen linkkia ei loytynyt");
+      return;
+    }
+
+    chrome.tabs.create({ url: match.url });
+  }
+
+  document.querySelectorAll(".clickable-offer").forEach((card) => {
+    card.addEventListener("click", () => {
+      const index = Number(card.dataset.index);
+      openOffer(matches[index]);
+    });
+  });
+
+  document.querySelectorAll(".visit-btn").forEach((button) => {
+    button.addEventListener("click", (event) => {
+      event.stopPropagation();
+      const index = Number(button.dataset.index);
+      openOffer(matches[index]);
+    });
+  });
 }
