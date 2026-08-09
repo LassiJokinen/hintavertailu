@@ -178,8 +178,8 @@ function summarizeLiveSearch(liveSearch, matches) {
       (total, item) => total + Number(item.candidatesFound || 0),
       0
     ),
-    liveMatches: Array.isArray(matches)
-      ? matches.filter((match) => match.source === "live-search").length
+    externalMatches: Array.isArray(matches)
+      ? matches.filter((match) => match.source === "live-search" || match.source === "hinta.fi").length
       : 0,
   };
 }
@@ -197,11 +197,15 @@ function buildEmptyMessage(liveSummary) {
 }
 
 function renderSourceBadge(match) {
-  if (match.source !== "live-search") {
-    return "";
+  if (match.source === "hinta.fi") {
+    return ` <span class="source-badge">Hinta.fi</span>`;
   }
 
-  return ` <span class="source-badge">Live</span>`;
+  if (match.source === "live-search") {
+    return ` <span class="source-badge">Live</span>`;
+  }
+
+  return "";
 }
 
 function renderResults(data) {
@@ -222,7 +226,7 @@ function renderResults(data) {
 
   status.innerHTML = `
     <span class="deal-icon">$</span>
-    Loytyi ${matches.length} vastaavaa tarjousta${liveSummary.liveMatches > 0 ? `, ${liveSummary.liveMatches} live-hausta` : ""}!
+    Loytyi ${matches.length} vastaavaa tarjousta${liveSummary.externalMatches > 0 ? `, ${liveSummary.externalMatches} netista` : ""}!
   `;
 
   const cheapest = matches.reduce((min, offer) =>
@@ -238,6 +242,7 @@ function renderResults(data) {
   if (!isCurrentCheapest) {
     const logoUrl =
       `https://www.google.com/s2/favicons?domain=${cheapest.store}&sz=64`;
+    const cheapestStoreName = cheapest.displayStore || cheapest.store;
 
     const cheapestIndex = matches.indexOf(cheapest);
 
@@ -247,11 +252,11 @@ function renderResults(data) {
 
         <div class="featured-inner">
           <div class="featured-content">
-            <img class="store-logo" src="${logoUrl}" alt="${cheapest.store}">
+            <img class="store-logo" src="${logoUrl}" alt="${cheapestStoreName}">
 
             <div class="featured-center">
               <div class="featured-title">${cheapest.title}</div>
-              <div class="featured-store">${cheapest.store}${renderSourceBadge(cheapest)}</div>
+              <div class="featured-store">${cheapestStoreName}${renderSourceBadge(cheapest)}</div>
               <div class="featured-price">${formatPrice(cheapest.price, cheapest.currency)}</div>
             </div>
 
@@ -269,17 +274,18 @@ function renderResults(data) {
 
     const logoUrl =
       `https://www.google.com/s2/favicons?domain=${match.store}&sz=64`;
+    const storeName = match.displayStore || match.store;
 
     html += `
       <div class="result-card clickable-offer" data-index="${index}">
         <div class="offer-inner">
           <div class="result-left">
-            <img class="store-logo" src="${logoUrl}" alt="${match.store}">
+            <img class="store-logo" src="${logoUrl}" alt="${storeName}">
           </div>
 
           <div class="result-center">
             <div class="product-title">${match.title}</div>
-            <div class="store-name">${match.store}${renderSourceBadge(match)}</div>
+            <div class="store-name">${storeName}${renderSourceBadge(match)}</div>
             <div class="price">${formatPrice(match.price, match.currency)}</div>
           </div>
 

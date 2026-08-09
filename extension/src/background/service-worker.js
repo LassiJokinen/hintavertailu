@@ -73,7 +73,7 @@ async function refreshMatchedOffers(matches) {
   const candidates = Array.isArray(matches)
     ? matches
         .filter((match) => match && match.url)
-        .filter((match) => match.source !== "live-search")
+        .filter((match) => !match.source || match.source === "database")
         .slice(0, 3)
         .map((match) => ({ url: match.url, store: match.store }))
     : [];

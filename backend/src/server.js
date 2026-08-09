@@ -10,6 +10,7 @@ const { scrapeGiganttiProduct } = require("./scrapers/gigantti");
 const { scrapeVerkkokauppaProduct } = require("./scrapers/verkkokauppa");
 const { scrapePowerProduct } = require("./scrapers/power");
 const { scrapeJimmsProduct } = require("./scrapers/jimms");
+const { searchHintaOffers } = require("./hinta-search");
 const { searchLiveOffers } = require("./live-search");
 const { ensureOfferMaintenanceColumns, extractStatusCode } = require("./offer-maintenance");
 const { calculateTotal, roundMoney } = require("./money");
@@ -187,11 +188,27 @@ app.post("/compare", async (req, res) => {
       console.log("FALLBACK MATCHES:", matches.length, matches);
     }
 
-    const liveSearch = await searchLiveOffers(query, SCRAPERS, {
-      candidatesPerStore: MAX_LIVE_CANDIDATES_PER_STORE,
-    });
-    const liveMatches = scoreAndFilterLiveOffers(query, liveSearch.offers);
-    matches = mergeMatches(matches, liveMatches);
+    const hintaSearch = await searchHintaOffers(query);
+    matches = mergeMatches(matches, hintaSearch.offers);
+
+    const liveSearch = hintaSearch.offers.length
+      ? {
+          offers: [],
+          diagnostics: [
+            {
+              status: "skipped",
+              reason: "hinta.fi offers found",
+            },
+          ],
+        }
+      : await searchLiveOffers(query, SCRAPERS, {
+          candidatesPerStore: MAX_LIVE_CANDIDATES_PER_STORE,
+        });
+
+    if (liveSearch.offers.length) {
+      const liveMatches = scoreAndFilterLiveOffers(query, liveSearch.offers);
+      matches = mergeMatches(matches, liveMatches);
+    }
 
     res.json({
       queryProduct: {
@@ -203,6 +220,7 @@ app.post("/compare", async (req, res) => {
       matches: matches.map((match) => ({
         id: match.id,
         store: match.store,
+        displayStore: match.displayStore || match.store,
         title: match.title,
         price: match.price,
         shipping: match.shipping,
@@ -213,9 +231,12 @@ app.post("/compare", async (req, res) => {
         matchScore: match.matchScore,
         matchReason: match.matchReason,
         source: match.source || "database",
+        hintaProductUrl: match.hintaProductUrl,
+        hintaShopUrl: match.hintaShopUrl,
       })),
       liveSearch: {
         enabled: true,
+        hinta: hintaSearch.diagnostic,
         diagnostics: liveSearch.diagnostics,
       },
     });
